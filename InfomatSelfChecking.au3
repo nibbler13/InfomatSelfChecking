@@ -4,7 +4,7 @@
 #pragma compile(UPX, true)
 #pragma compile(CompanyName, 'ООО Клиника ЛМС')
 #pragma compile(FileDescription, Приложения для инфомата для самостоятельной отметки о посещении)
-#pragma compile(LegalCopyright, Грашкин Павел Павлович - Нижний Новгород - 31-555 - nn-admin@nnkk.budzdorov.su)
+#pragma compile(LegalCopyright, Грашкин Павел Павлович - Нижний Новгород)
 #pragma compile(ProductName, InfomatSelfChecking)
 #EndRegion ;**** Directives created by AutoIt3Wrapper_GUI ****
 
@@ -1338,14 +1338,14 @@ Func SendEmail($messageToSend)
 		"Please do not reply"
 
 	ToLog(@CRLF & "-----Sending email-----")
-	Local $login = "infomat_notification@nnkk.budzdorov.su"
-	Local $password = "fnpxmagr"
-	Local $server = "smtp.budzdorov.ru"
+	Local $login = ""
+	Local $password = ""
+	Local $server = ""
 	Local $from = $current_pc_name
-	Local $to = "nn-admin@bzklinika.ru"
+	Local $to = ""
 
 	_INetSmtpMailCom($server, $from, $login, $to, _
-		$title, $messageToSend, "", "nn-admin@bzklinika.ru", "", $login, $password)
+		$title, $messageToSend, "", "", "", $login, $password)
 EndFunc
 
 
