@@ -4,7 +4,7 @@
 #pragma compile(UPX, true)
 #pragma compile(CompanyName, 'ООО Клиника ЛМС')
 #pragma compile(FileDescription, Приложения для инфомата для самостоятельной отметки о посещении)
-#pragma compile(LegalCopyright, Грашкин Павел Павлович - Нижний Новгород)
+#pragma compile(LegalCopyright, Грашкин Павел Павлович - Нижний Новгород - 31-555)
 #pragma compile(ProductName, InfomatSelfChecking)
 #EndRegion ;**** Directives created by AutoIt3Wrapper_GUI ****
 
@@ -33,60 +33,111 @@
 
 
 #Region ====================== Variables ======================
+Local $scriptDir = @ScriptDir
+Local $resourcesPath = $scriptDir & "\Resources\"
+Local $printedAppointmentListPath = $scriptDir & "\Printed Appointments List\"
+Local $logsPath = $scriptDir & "\Logs\"
+
+Local $errStr = "===ERROR=== "
+Local $iniFile = $resourcesPath & "\InfomatSelfChecking.ini"
+If Not FileExists($iniFile) Then
+	MsgBox($MB_ICONERROR, "Critical error!", "Cannot find the settings file:" & @CRLF & $iniFile & _
+			@CRLF & @CRLF & "Please contact to developer: " & @CRLF & "Mail: nn-admin@bzklinika.ru" & @CRLF & _
+			"Internal phone number: 31-555")
+	ToLog($errStr & "Cannot find the settings file:" & $iniFile)
+	Exit
+EndIf
+
 Local $oMyError = ObjEvent("AutoIt.Error", "HandleComError")
 OnAutoItExitRegister("OnExit")
-Local $iniFile = @ScriptDir & "\InfomatSelfChecking.ini"
-Local $generalSectionName = "general"
-
-Local $error
-
-Local $headerColor = 0x4e9b44
-Local $okButtonColor = 0x4e9b44
-Local $okButtonPressedColor = 0x43853a
-Local $mainButtonColor = 0xe0e0e0
-Local $mainButtonPressedColor = 0xd6d6d6
-Local $disabledColor = 0xdfdfdf
-Local $disabledTextColor = 0xa5a5a5
-Local $textColor = 0x2c3d3f
-Local $alternateTextColor = 0xffffff
-Local $mainBackgroundColor = 0xffffff
-Local $errorTitleColor = 0xf98d3c
-
-Local $bottonLineHeight = 11
-
-Local $mainFontName = "Franklin Gothic"
 
 Local $dX = @DesktopWidth
 Local $dY = @DesktopHeight
 ;~ Local $dX = 1280;1024
 ;~ Local $dY = 1024;819
 
-Local $numButSize = $dY / 10
-Local $distBt = $numButSize / 3
-
-Local $btFontSize = $numButSize / 3
-Local $btWeight = $FW_BOLD
-Local $btQual = $CLEARTYPE_QUALITY
-
-Local $headerHeight = $numButSize * 1.5
-Local $headerLabelFontWeight = $FW_SEMIBOLD
-
-Local $initX = $dX / 2 - $numButSize * 1.5 - $distBt
-Local $initY = $dY / 2 - $numButSize * 1.5 - $distBt
+Local $numButSize = Round($dY / 10)
+Local $distBt = Round($numButSize / 3)
+Local $headerHeight = Round($numButSize * 1.5)
+Local $initX = Round($dX / 2 - $numButSize * 1.5 - $distBt)
+Local $initY = Round($dY / 2 - $numButSize * 1.5 - $distBt)
 
 Local $timeLabel = ""
-
-Local $infoclinicaDB = IniRead($iniFile, $generalSectionName, "InfoclinicaDatabaseAddress", "")
 Local $enteredCode = "";"9601811873"
 
-Local $bottomAppointmentTimeBoundaries = -15
-Local $topAppointmentTimeBoundaries = 180
+Local $generalSectionName = "general"
+Local $infoclinicaDB = IniRead($iniFile, $generalSectionName, "infoclinica_database_address", "")
+Local $formMaxTimeWait = IniRead($iniFile, $generalSectionName, "form_max_time_wait_in_seconds", 30) * 1000
+Local $showAppointmentsForm = IniRead($iniFile, $generalSectionName, "show_appointments_form", 0) = 0 ? False : True
+Local $showIconsDescription = IniRead($iniFile, $generalSectionName, "show_icons_description", 0) = 0 ? False : True
 
-Local $formMaxTimeWait = IniRead($iniFile, $generalSectionName, "FormMaxTimeWaitInSeconds", 30) * 1000
+Local $colorSectionName = "colors"
+Local $colorHeader = IniRead($iniFile, $colorSectionName, "header", 0x4e9b44)
+Local $colorOkButton = IniRead($iniFile, $colorSectionName, "button", 0x4e9b44)
+Local $colorOkButtonPressed = IniRead($iniFile, $colorSectionName, "button_pessed", 0x43853a)
+Local $colorMainButton = IniRead($iniFile, $colorSectionName, "main_button", 0xe0e0e0)
+Local $colorMainButtonPressed = IniRead($iniFile, $colorSectionName, "main_button_pressed", 0xd6d6d6)
+Local $colorDisabled = IniRead($iniFile, $colorSectionName, "disabled", 0xdfdfdf)
+Local $colorDisabledText = IniRead($iniFile, $colorSectionName, "disabled_text", 0xa5a5a5)
+Local $colorText = IniRead($iniFile, $colorSectionName, "text", 0x2c3d3f)
+Local $colorAlternateText = IniRead($iniFile, $colorSectionName, "alternate_text", 0xffffff)
+Local $colorMainBackground = IniRead($iniFile, $colorSectionName, "main_background", 0xffffff)
+Local $colorErrorTitle = IniRead($iniFile, $colorSectionName, "error_title", 0xf98d3c)
 
-Local $resourcesPath = @ScriptDir & "\Resources\"
-Local $printedAppointmentListPath = @ScriptDir & "\Printed Appointments List\"
-Local $logsPath = @ScriptDir & "\Logs\"
+Local $fontSectionName = "font"
+Local $fontName = IniRead($iniFile, $fontSectionName, "main_font_name", "Franklin Gothic")
+Local $fontWeight = IniRead($iniFile, $fontSectionName, "main_font_weight", $FW_BOLD)
+Local $fontQuality = IniRead($iniFile, $fontSectionName, "quality", $CLEARTYPE_QUALITY)
+Local $fontNameAppointments = IniRead($iniFile, $fontSectionName, "appointments_font_name", "Franklin Gothic Book")
+Local $fontWeightAppointments = IniRead($iniFile, $fontSectionName, "appointments_font_weight", $FW_NORMAL)
+Local $fontSize = Round($numButSize / 3)
+
+Local $timeBoundariesSectionName = "available_time_to_set_mark_in_minutes"
+Local $timeBoundariesPast = IniRead($iniFile, $timeBoundariesSectionName, "past", 10)
+Local $timeBoundariesFuture = IniRead($iniFile, $timeBoundariesSectionName, "future", 180)
+Local $timeBoundariesAcceptableDifferenceBetweenAppointments = IniRead($iniFile, $timeBoundariesSectionName, _
+		"acceptable_difference_between_appointments", 120)
+
+Local $textTitleMain = GetTextFromIni("title_main")
+Local $textTitleNameConfirm = GetTextFromIni("title_name_confirm")
+Local $textTitleAppointments = GetTextFromIni("title_appointments")
+Local $textTitleNotification = GetTextFromIni("title_notification")
+
+Local $textNotificationDbNotAvailable = GetTextFromIni("notification_db_not_available")
+Local $textNotificationNothingFound = GetTextFromIni("notification_nothing_found")
+Local $textNotificationWrongName = GetTextFromIni("notification_wrong_name")
+Local $textNotificationNoAppointmetnsForNow = GetTextFromIni("notification_no_appointmetns_for_now")
+
+Local $textAppointmentsMarkOk = GetTextFromIni("appointments_mark_ok")
+Local $textAppointmentsMarkProblem = GetTextFromIni("appointments_mark_problem")
+Local $textAppointmentsPrintOk = GetTextFromIni("appointments_print_ok")
+Local $textAppointmentsPrintProblem = GetTextFromIni("appointments_print_problem")
+Local $textAppointmentsWarningGeneral = GetTextFromIni("appointments_warning_general")
+Local $textAppointmentsWarningCash = GetTextFromIni("appointments_warning_cash")
+Local $textAppointmentsWarningTime = GetTextFromIni("appointments_warning_time")
+Local $textAppointmentsWarningXray = GetTextFromIni("appointments_warning_xray")
+
+Local $textPrintNotificationCash = GetTextFromIni("print_notification_cash")
+Local $textPrintNotificationTime = GetTextFromIni("print_notification_time")
+Local $textPrintNotificationXray = GetTextFromIni("print_notification_xray")
+Local $textPrintMessageTimeOk = GetTextFromIni("print_message_time_ok")
+Local $textPrintMessageTimeLate = GetTextFromIni("print_message_time_late")
+Local $textPrintMessageFinalOk = GetTextFromIni("print_message_final_ok")
+Local $textPrintMessageFinalCash = GetTextFromIni("print_message_final_cash")
+Local $textPrintMessageFinalTime = GetTextFromIni("print_message_final_time")
+Local $textPrintMessageFinalXray = GetTextFromIni("print_message_final_xray")
+Local $textPrintMessageFinalMultiple = GetTextFromIni("print_message_final_multiple")
+
+Local $sqlCheckEnteredNumber = "Select Distinct Cl.PCode, Cl.FirstName, Cl.MidName, Cl.BDate "
+$sqlCheckEnteredNumber &= GetTextFromIni("sql_check_entered_number", True)
+
+Local $sqlGetAppointments = "Select Sch.SchedId, Sch.WorkDate, Sch.BHour, Sch.BMin, D.DName, Dep.DepName, R.RNum, "
+$sqlGetAppointments &= GetTextFromIni("sql_get_appointments", True)
+
+Local $sqlSetMark = "Update Schedule Set ScreenVisit = 1, ClVisit = 1, VisitTime = 'now', "
+$sqlSetMark &= GetTextFromIni("sql_set_mark", True)
+
+
 
 Local $pressedButtonTimeCounter = 0
 Local $previousButtonPressedID[] = [0, 0]
@@ -98,7 +149,7 @@ Local $timeCounter = 0
 Local $mainGui = 0
 Local $bt_next = 0
 Local $inp_pincode = 0
-#EndRegion
+#EndRegion ====================== Variables ======================
 
 
 FormMainGui()
@@ -107,11 +158,10 @@ FormMainGui()
 
 
 Func FormMainGui()
-	_WinAPI_ShowCursor(False)
+;~ 	_WinAPI_ShowCursor(False)
 	$mainGui = GUICreate("SelfChecking", $dX, $dY, 0, 0, $WS_POPUP, $WS_EX_TOPMOST)
 
-	Local $text = "Для отметки о посещении" & @CRLF & "введите Ваш номер мобильного телефона"
-	CreateStandardDesign($mainGui, $text, False, True)
+	CreateStandardDesign($mainGui, $textTitleMain, False, True)
 
 	Local $bt_1 = CreateButton("1", $initX, $initY, $numButSize, $numButSize)
 
@@ -151,15 +201,15 @@ Func FormMainGui()
 
 	$prevBt = ControlGetPos($mainGui, "", $bt_clear)
 	$bt_next = CreateButton("Продолжить", $prevBt[0], $prevBt[3] + $distBt + $prevBt[1], _
-		$numButSize * 3 + $distBt * 2, $numButSize, $disabledColor)
-	GUICtrlSetColor(-1, $alternateTextColor)
+			$numButSize * 3 + $distBt * 2, $numButSize, $colorDisabled)
+	GUICtrlSetColor(-1, $colorAlternateText)
 
 	$prevBt = ControlGetPos($mainGui, "", $bt_next)
 	Local $prevBt2 = ControlGetPos($mainGui, "", $bt_1)
 	$inp_pincode = GUICtrlCreateLabel($enteredCode, $dX / 2 - $prevBt[2] * 2.3 / 2, _
-		$prevBt2[1] - $prevBt2[3] - $distBt , $prevBt[2] * 2.3, $prevBt[3], BitOr($SS_CENTER, $SS_CENTERIMAGE))
-	GUICtrlSetFont(-1, $btFontSize * 1.8)
-	GUICtrlSetColor(-1, $textColor)
+			$prevBt2[1] - $prevBt2[3] - $distBt, $prevBt[2] * 2.3, $prevBt[3], BitOR($SS_CENTER, $SS_CENTERIMAGE))
+	GUICtrlSetFont(-1, $fontSize * 1.8)
+	GUICtrlSetColor(-1, $colorText)
 
 	UpdateTimeLabel()
 	UpdateInput()
@@ -255,52 +305,34 @@ Func FormMainGui()
 		EndIf
 
 		If @MIN <> $prevMinute Then
-			Local $res = GetDatabaseAvailabilityStatus()
-			If Not $res Then
-				Local $errorMessage = "К сожалению," & @CRLF & _
-									  "cервис временно недоступен" & @CRLF & @CRLF & _
-									  "Попробуйте позднее" & @CRLF & _
-									  "или обратитесь на регистратуру"
-				FormShowMessage("", $errorMessage, True, True)
-			EndIf
+			If Not GetDatabaseAvailabilityStatus() Then _
+					FormShowMessage("", $textNotificationDbNotAvailable, True, True)
 
 			UpdateTimeLabel()
 			$prevMinute = @MIN
 		EndIf
 	WEnd
-EndFunc
+EndFunc   ;==>FormMainGui
 
 
 Func FormCheckEnteredNumber($code)
 	ToLog("FormCheckEnteredNumber: " & $code)
 	Local $phoneNumberPrefix = StringLeft($code, 3)
 	Local $phoneNumber = StringRight($code, 7)
-	Local $sqlQuery = 	"Select Distinct Cl.PCode, Cl.FirstName, Cl.MidName, Cl.BDate " & _
-						"From Schedule S " & _
-						"Join Clients Cl On Cl.PCode = S.PCode " & _
-						"Join ClPhones Clp On Clp.PCode = S.PCode " & _
-						"Where S.WorkDate = 'today' " & _
-						"And Clp.PhPrefix Containing '" & $phoneNumberPrefix & "' " & _
-						"And Clp.Phone Containing '" & $phoneNumber & "'"
+	Local $sqlQuery = StringReplace(StringReplace($sqlCheckEnteredNumber, "*", $phoneNumberPrefix, 1), _
+			"*", $phoneNumber, 1)
 
-	Local $res = ExecuteSql($sqlQuery)
+	Local $res = ExecuteSQL($sqlQuery)
 
 	Local $textPhoneNumber = "+7 (" & $phoneNumberPrefix & ") " & StringLeft($phoneNumber, 3) & _
-		"-" & StringMid($phoneNumber, 4, 2) & "-" & StringRight($phoneNumber, 2)
+			"-" & StringMid($phoneNumber, 4, 2) & "-" & StringRight($phoneNumber, 2)
 	Local $errorMessage = ""
 	Local $checkDb = False
 
 	If $res = 0 Or UBound($res, $UBOUND_ROWS) > 1 Then
-		$errorMessage &= "К сожалению, по номеру " & $textPhoneNumber & @CRLF & _
-						 "не найдено записей на ближайшее время" & @CRLF & @CRLF & @CRLF & _
-						 "Возможно указан неверный номер" & @CRLF & @CRLF & _
-						 "Попробуйте снова" & @CRLF & _
-						 "или обратитесь на регистратуру"
+		$errorMessage = StringReplace($textNotificationNothingFound, "*", $textPhoneNumber)
 	ElseIf $res = -1 Then
-		$errorMessage &= "К сожалению," & @CRLF & _
-						 "в данный момент сервис недоступен" & @CRLF & @CRLF & @CRLF & _
-						 "Попробуйте позднее" & @CRLF & _
-						 "или обратитесь на регистратуру"
+		$errorMessage = $textNotificationDbNotAvailable
 		$checkDb = True
 	EndIf
 
@@ -311,18 +343,17 @@ Func FormCheckEnteredNumber($code)
 
 	Local $fioForm = GUICreate("FIO", $dX, $dY, 0, 0, $WS_POPUP, $WS_EX_TOPMOST)
 
-	Local $titleText = "Пожалуйста," & @CRLF & "убедитесь в соответствии Ваших данных:"
-	CreateStandardDesign($fioForm, $titleText, False)
+	CreateStandardDesign($fioForm, $textTitleNameConfirm, False)
 
 	Local $date = StringMid($res[0][3], 7, 2) & "." & StringMid($res[0][3], 5, 2) & "." & StringLeft($res[0][3], 4)
 	Local $fullName = $res[0][1] & " " & $res[0][2]
 	Local $mainText = $fullName & @CRLF & @CRLF & "Дата рождения: " & $date
 
-	CreateLabel($mainText, 0, $dY * 0.3, $dX, $dY * 0.4, $textColor, $GUI_BKCOLOR_TRANSPARENT, $fioForm, $btFontSize * 1.2)
+	CreateLabel($mainText, 0, $dY * 0.3, $dX, $dY * 0.4, $colorText, $GUI_BKCOLOR_TRANSPARENT, $fioForm, $fontSize * 1.2)
 
 	$prevBt = ControlGetPos($mainGui, "", $bt_next)
-	Local $bt_ok = CreateButton("Продолжить", $dx - $distBt - $prevBt[2], $prevBt[1], $prevBt[2], $prevBt[3], $okButtonColor)
-	GUICtrlSetColor(-1, $alternateTextColor)
+	Local $bt_ok = CreateButton("Продолжить", $dX - $distBt - $prevBt[2], $prevBt[1], $prevBt[2], $prevBt[3], $colorOkButton)
+	GUICtrlSetColor(-1, $colorAlternateText)
 
 	Local $bt_not = CreateButton("Неверно", 0 + $distBt, $prevBt[1], $prevBt[2], $prevBt[3])
 
@@ -345,10 +376,7 @@ Func FormCheckEnteredNumber($code)
 		Switch $nMsg
 			Case $bt_not
 				ToLog("Fullname not correct: " & $fullName)
-				$errorMessage = "Возможно указан неверный номер" & @CRLF & @CRLF & _
-								"Попробуйте снова" & @CRLF & _
-								"или обратитесь на регистратуру"
-				FormShowMessage($fioForm, $errorMessage)
+				FormShowMessage($fioForm, $textNotificationWrongName)
 				Return
 			Case $bt_ok
 				FormShowAppointments($fioForm, $res[0][0], $res[0][1], $res[0][2])
@@ -367,82 +395,77 @@ Func FormCheckEnteredNumber($code)
 			$prevMinute = @MIN
 		EndIf
 	WEnd
-EndFunc
+EndFunc   ;==>FormCheckEnteredNumber
 
 
 Func FormShowAppointments($guiToDelete, $patientID, $name, $surname)
 	Local $fullName = $name & " " & $surname
 	ToLog("FormShowAppointments: " & $fullName)
 
-	Local $sqlQuery = "Select Sch.SchedId, Sch.WorkDate, Sch.BHour, Sch.BMin, D.DName, Dep.DepName, R.RNum, " & _
-					"Case (Case " & _
-					"  When Sch.SectId Is Not Null And Sch.SectId != 0 Then Sch.SectId " & _
-					"  Else (Select SectId From Clients Where PCode = Sch.PCode) " & _
-					"End) " & _
-					"When 4363 Then 1 " & _
-					"When 991139394 Then 1 " & _
-					"Else 0 " & _
-					"End As Kateg, Iif(CoalEsce(Sch.ClVisit,0)=0,0,1) " & _
-					"From Schedule Sch " & _
-					"Join Doctor D On D.DCode = Sch.DCode " & _
-					"Join DoctShedule Ds On Ds.DCode = Sch.DCode " & _
-					"And Ds.SchedIdent = Sch.SchedIdent " & _
-					"Join Departments Dep On Dep.DepNum = Ds.DepNum " & _
-					"Join Chairs Ch On Ch.ChId = Ds.Chair " & _
-					"Join Rooms R On R.RId = Ch.RId Where Sch.WorkDate = 'today' " & _
-					"And Sch.PCode = " & $patientID
-
-
+	Local $sqlQuery = StringReplace($sqlGetAppointments, "*", $patientID)
 	Local $res = ExecuteSQL($sqlQuery)
 
 	$res = GetAppointmentsForCurrentTime($res)
 
 	If Not IsArray($res) Or Not UBound($res, $UBOUND_ROWS) Then
-		Local $errorMessage = "На ближайшее время у Вас нет назначений" & @CRLF & @CRLF & _
-							  "За подробной информацией Вы можете" & @CRLF & _
-							  "обратиться на регистратуру"
-		FormShowMessage($guiToDelete, $errorMessage)
+		FormShowMessage($guiToDelete, $textNotificationNoAppointmetnsForNow)
 		Return
 	EndIf
 
-	Local $destForm = GUICreate("FormShowAppointments", $dX, $dY, 0, 0, $WS_POPUP, $WS_EX_TOPMOST)
-	Local $text = $fullName & "," & @CRLF & "Ваши записи на ближайшее время:"
-	CreateStandardDesign($destForm, $text, False)
+	Local $destForm = 0
+	Local $bt_close = -666
+	Local $bt_print = -667
+	Local $needRegistry = _ArrayMax($res, Default, Default, Default, 6) + _
+			_ArrayMax($res, Default, Default, Default, 7) + _
+			_ArrayMax($res, Default, Default, Default, 8)
 
-	$prevBt = ControlGetPos($mainGui, "", $bt_next)
+	If $showAppointmentsForm Then
+		$destForm = GUICreate("FormShowAppointments", $dX, $dY, 0, 0, $WS_POPUP, $WS_EX_TOPMOST)
+		CreateStandardDesign($destForm, StringReplace($textTitleAppointments, "*", $fullName), False)
 
-	Local $bt_close = CreateButton("Закрыть", _
-		0 + $distBt, _
-		$prevBt[1], _
-		$prevBt[2], _
-		$prevBt[3])
+		$prevBt = ControlGetPos($mainGui, "", $bt_next)
 
-	Local $bt_print = CreateButton("Распечатать", _
-		$dX - $distBt - $prevBt[2], _
-		$prevBt[1], _
-		$prevBt[2], _
-		$prevBt[3], _
-		$okButtonColor, _
-		$alternateTextColor)
+		$bt_close = CreateButton("Закрыть", _
+				0 + $distBt, _
+				$prevBt[1], _
+				$prevBt[2], _
+				$prevBt[3])
 
-	GUISetFont($btFontSize * 0.9, $FW_NORMAL, -1, "Franklin Gothic Book", $destForm, $btQual)
-	Local $needRegistry = CreateAppointmentsTable($res, $destForm)
+		$bt_print = CreateButton("Распечатать", _
+				$dX - $distBt - $prevBt[2], _
+				$prevBt[1], _
+				$prevBt[2], _
+				$prevBt[3], _
+				$colorOkButton, _
+				$colorAlternateText)
 
-	UpdateTimeLabel()
-	GUISetState()
+		GUISetFont($fontSize * 0.9, $fontWeightAppointments, -1, $fontNameAppointments, $destForm, $fontQuality)
+		CreateAppointmentsTable($res, $destForm)
 
-	Sleep(10)
+		UpdateTimeLabel()
+		GUISetState()
 
-	If $guiToDelete Then GUIDelete($guiToDelete)
+		Sleep(10)
+		If $guiToDelete Then GUIDelete($guiToDelete)
+	EndIf
+
+	If Not $needRegistry Then
+		For $i = 0 To UBound($res, $UBOUND_ROWS) - 1
+			Local $idToUpdate = $res[$i][0]
+			Local $updateSql = StringReplace($sqlSetMark, "*", $idToUpdate)
+
+			ExecuteSQL($updateSql)
+			ToLog("Setting visit mark for: " & $idToUpdate)
+		Next
+	EndIf
 
 	Local $needToClose = False
 	Local $textToShow = ""
 
 	If $needRegistry Then
-		$textToShow &= "Для отметки о посещении" & @CRLF & "просьба пройти на регистратуру"
+		$textToShow &= $textAppointmentsMarkProblem
 	Else
-		$textToShow &= "Отметка о посещении успешно проставлена" & @CRLF & @CRLF & _
-					   "Пожалуйста пройдите на прием"
+		$textToShow &= $textAppointmentsMarkOk
 	EndIf
 
 	$timeCounter = 0
@@ -450,12 +473,13 @@ Func FormShowAppointments($guiToDelete, $patientID, $name, $surname)
 	While True
 		$timer = _Timer_Init()
 
-		If $timeCounter > $formMaxTimeWait Then
-			ToLog("FormShowAppointments force close")
-			$needToClose = True
-		EndIf
+		If $timeCounter > $formMaxTimeWait Then $needToClose = True
 
 		$nMsg = GUIGetMsg()
+		If Not $showAppointmentsForm Then
+			$nMsg = $bt_print
+			$destForm = $guiToDelete
+		EndIf
 
 		Switch $nMsg
 			Case $bt_close
@@ -464,12 +488,9 @@ Func FormShowAppointments($guiToDelete, $patientID, $name, $surname)
 			Case $bt_print
 				Local $printResult = PrintAppontments($res, $name, $surname)
 				If $printResult Then
-					$textToShow = "Список назначений успешно распечатан" & @CRLF & @CRLF & $textToShow
+					$textToShow = $textAppointmentsPrintOk & @CRLF & @CRLF & $textToShow
 				Else
-					$textToShow = "К сожалению, по техническим причинам" & @CRLF & _
-						"не удалось распечатать список назначений" & @CRLF & _
-						"Информация о проблеме будет передана" & @CRLF & _
-						"ответственным лицам" & @CRLF & @CRLF & $textToShow
+					$textToShow = $textAppointmentsPrintProblem & @CRLF & @CRLF & $textToShow
 					SendEmail($textToShow)
 				EndIf
 				$needToClose = True
@@ -491,15 +512,15 @@ Func FormShowAppointments($guiToDelete, $patientID, $name, $surname)
 			UpdateTimeLabel()
 			$prevMinute = @MIN
 		EndIf
-   WEnd
-EndFunc
+	WEnd
+EndFunc   ;==>FormShowAppointments
 
 
 Func FormShowMessage($guiToDelete, $message, $showError = True, $checkDb = False)
 	ToLog("FormShowMessage: " & StringReplace($message, @CRLF, " | "))
 
 	Local $nanForm = GUICreate("FormShowMessage", $dX, $dY, 0, 0, $WS_POPUP, $WS_EX_TOPMOST)
-	Local $text = "Уважаемый пациент!"
+	Local $text = $textTitleNotification
 	CreateStandardDesign($nanForm, $text, $showError, True)
 
 	$prevBt = ControlGetPos($mainGui, "", $bt_next)
@@ -510,7 +531,7 @@ Func FormShowMessage($guiToDelete, $message, $showError = True, $checkDb = False
 	Local $y = $dY * 0.3
 	Local $sizeX = $dX
 	Local $sizeY = $dY * 0.4
-	CreateLabel($message, $x, $y, $sizeX, $sizeY, $textColor, $GUI_BKCOLOR_TRANSPARENT, $nanForm, $btFontSize * 1.2)
+	CreateLabel($message, $x, $y, $sizeX, $sizeY, $colorText, $GUI_BKCOLOR_TRANSPARENT, $nanForm, $fontSize * 1.2)
 
 	UpdateTimeLabel()
 	GUISetState()
@@ -542,10 +563,10 @@ Func FormShowMessage($guiToDelete, $message, $showError = True, $checkDb = False
 		EndIf
 
 		Switch $nMsg
-		Case $bt_close
-			ToLog("FormShowMessage close" & @CRLF)
-			GUIDelete($nanForm)
-			Return
+			Case $bt_close
+				ToLog("FormShowMessage close" & @CRLF)
+				GUIDelete($nanForm)
+				Return
 		EndSwitch
 
 		If Not $checkDb Then
@@ -555,45 +576,46 @@ Func FormShowMessage($guiToDelete, $message, $showError = True, $checkDb = False
 			$timer = 0
 		EndIf
 	WEnd
-EndFunc
+EndFunc   ;==>FormShowMessage
 
 
 
 
 Func CreateStandardDesign($gui, $titleText, $isError, $trademark = False)
-	GUISetBkColor($mainBackgroundColor)
-	GUISetFont($btFontSize, $btWeight, 0, $mainFontName, $gui, $btQual)
+	GUISetBkColor($colorMainBackground)
+	GUISetFont($fontSize, $fontWeight, 0, $fontName, $gui, $fontQuality)
 
-	Local $titleColor = $headerColor
-	If $isError Then $titleColor = $errorTitleColor
+	Local $titleColor = $colorHeader
+	If $isError Then $titleColor = $colorErrorTitle
 
-	CreateLabel($titleText, 0, 0, $dX, $headerHeight, $alternateTextColor, $titleColor, $gui)
+	CreateLabel($titleText, 0, 0, $dX, $headerHeight, $colorAlternateText, $titleColor, $gui)
 
 	Local $timeScopeWidth = $numButSize * 1.7
 	Local $timeIconWidth = 20
 
-	GUISetFont($btFontSize * 0.7)
-	$timeLabel = GuiCtrlCreateLabel("13:14", 0, 0, -1, -1, BitOr($SS_CENTER, $SS_CENTERIMAGE))
+	GUISetFont($fontSize * 0.7, $fontWeight, 0, $fontName, $gui, $fontQuality)
+	$timeLabel = GUICtrlCreateLabel("13:14", 0, 0, -1, -1, BitOR($SS_CENTER, $SS_CENTERIMAGE))
 	Local $timeLabelPosition = ControlGetPos($gui, "", $timeLabel)
 	GUICtrlSetPos($timeLabel, $dX - $timeLabelPosition[2] - $distBt / 4, $distBt / 4)
 	GUICtrlSetBkColor(-1, $GUI_BKCOLOR_TRANSPARENT)
-	GUICtrlSetColor(-1, $alternateTextColor)
-	GUISetFont($btFontSize)
+	GUICtrlSetColor(-1, $colorAlternateText)
+	GUISetFont($fontSize, $fontWeight, 0, $fontName, $gui, $fontQuality)
 
 	$timeLabelPosition = ControlGetPos($gui, "", $timeLabel)
 	Local $timePic = CreatePngControl($resourcesPath & "TimeIcon.png", $timeIconWidth, $timeIconWidth)
 	GUICtrlSetPos($timePic, $timeLabelPosition[0] - $distBt / 4 - $timeIconWidth, _
-		$timeLabelPosition[1] + $timeLabelPosition[3] / 2 - $timeIconWidth / 2)
+			$timeLabelPosition[1] + $timeLabelPosition[3] / 2 - $timeIconWidth / 2)
 
+	Local $bottonLineHeight = 11
 	GUICtrlCreatePic($resourcesPath & "PicBottomLine.jpg", 0, $dY - $bottonLineHeight, $dX, $bottonLineHeight)
 
 	If $trademark Then
 		Local $trademarkWidth = 159
 		Local $trademarkHeight = 170
 		GUICtrlCreatePic($resourcesPath & "PicButterfly.jpg", $dX - $trademarkWidth - $distBt / 2, _
-			$dY - $trademarkHeight - $bottonLineHeight - $distBt / 2, $trademarkWidth, $trademarkHeight)
+				$dY - $trademarkHeight - $bottonLineHeight - $distBt / 2, $trademarkWidth, $trademarkHeight)
 	EndIf
-EndFunc
+EndFunc   ;==>CreateStandardDesign
 
 
 Func CreatePngControl($pngPath, $width, $height)
@@ -607,17 +629,17 @@ Func CreatePngControl($pngPath, $width, $height)
 	_GDIPlus_ImageDispose($hImage)
 	_GDIPlus_Shutdown()
 	Return $newControl
-EndFunc
+EndFunc   ;==>CreatePngControl
 
 
-Func CreateLabel($text, $x, $y, $width, $height, $textColor, $backgroundColor, $gui, $fontSize = $btFontSize)
+Func CreateLabel($text, $x, $y, $width, $height, $colorText, $backgroundColor, $gui, $fntSize = $fontSize, $fntWeight = $fontWeight)
 	$Label1 = GUICtrlCreateLabel("", $x, $y, $width, $height)
 	GUICtrlSetBkColor(-1, $backgroundColor)
 
-	GUISetFont($fontSize)
+	GUISetFont($fntSize, $fntWeight, 0, $fontName, $gui, $fontQuality)
 	Local $label = GUICtrlCreateLabel($text, 0, 0, -1, -1, $SS_CENTER)
 	GUICtrlSetBkColor(-1, $GUI_BKCOLOR_TRANSPARENT)
-	GUICtrlSetColor(-1, $textColor)
+	GUICtrlSetColor(-1, $colorText)
 
 	Local $position = ControlGetPos($gui, "", $label)
 	If IsArray($position) Then
@@ -625,11 +647,11 @@ Func CreateLabel($text, $x, $y, $width, $height, $textColor, $backgroundColor, $
 		Local $newY = $y + ($height - $position[3]) / 2
 		GUICtrlSetPos($label, $newX, $newY)
 	EndIf
-	GUISetFont($btFontSize)
-EndFunc
+	GUISetFont($fontSize, $fontWeight, 0, $fontName, $gui, $fontQuality)
+EndFunc   ;==>CreateLabel
 
 
-Func CreateButton($text, $x, $y, $width, $height, $bkColor = $mainButtonColor, $color = $textColor)
+Func CreateButton($text, $x, $y, $width, $height, $bkColor = $colorMainButton, $color = $colorText)
 	Local $offsetX = 6
 	Local $offsetY = 4
 	Local $sizeX = 12
@@ -646,7 +668,7 @@ Func CreateButton($text, $x, $y, $width, $height, $bkColor = $mainButtonColor, $
 	GUICtrlSetBkColor(-1, $bkColor)
 	GUICtrlSetColor(-1, $color)
 	Return $id
-EndFunc
+EndFunc   ;==>CreateButton
 
 
 Func CreateAppointmentsTable($res, $gui)
@@ -671,10 +693,10 @@ Func CreateAppointmentsTable($res, $gui)
 	$sizes[1] = GetOptimalLabelWidth($head[0][5], $gui)
 	$sizes[2] = $totalWidth - $sizes[0] - $sizes[1] - $distBt * 2
 
-	Local $maxSymbols = Round($sizes[2] / ($btFontSize * 0.8))
+	Local $maxSymbols = Round($sizes[2] / ($fontSize * 0.8))
 
 	GUICtrlCreateLabel("", $startX, $startY, $totalWidth + $distance * 3, $height - $distance)
-	GUICtrlSetBkColor(-1, $mainButtonColor)
+	GUICtrlSetBkColor(-1, $colorMainButton)
 
 	Local $arraySize = UBound($head, $UBOUND_ROWS) - 1
 	If $arraySize > 6 Then $arraySize = 6
@@ -686,11 +708,8 @@ Func CreateAppointmentsTable($res, $gui)
 	For $i = 0 To $arraySize
 		Local $currentRow[4]
 		Local $cash = $head[$i][6]
-		Local $time = $head[$i][7]
-		Local $xray = 0
-;~ 		If $i < 2 Then $xray = False
-
-;~ 		ToLog($cash & $time & $xray)
+		Local $time = $head[$i][8]
+		Local $xray = $head[$i][7]
 
 		$currentRow[0] = $head[$i][2]
 		$currentRow[1] = $head[$i][5]
@@ -709,145 +728,141 @@ Func CreateAppointmentsTable($res, $gui)
 		WEnd
 
 		For $x = 0 To 2
-			Local $attribute = BitOr($SS_CENTER, $SS_CENTERIMAGE)
+			Local $attribute = BitOR($SS_CENTER, $SS_CENTERIMAGE)
 			If $x = 2 Then $attribute = $SS_CENTERIMAGE
 
 			GUICtrlCreateLabel($currentRow[$x], _
-				$currentX, _
-				$currentY, _
-				$sizes[$x], _
-				$height, _
-				$attribute)
+					$currentX, _
+					$currentY, _
+					$sizes[$x], _
+					$height, _
+					$attribute)
 			GUICtrlSetBkColor(-1, $GUI_BKCOLOR_TRANSPARENT)
 			If Not $i Then GUICtrlSetFont(-1, -1, $FW_SEMIBOLD)
 
 			If $i < $arraySize Then
 				GUICtrlCreateLabel("", _
-					$startX, _
-					$currentY + ($i = 0 ? $height - $distance - 1 : $height), _
-					$totalWidth + $distance * 3, _
-					$distance)
-				GUICtrlSetBkColor(-1, $mainButtonColor)
+						$startX, _
+						$currentY + ($i = 0 ? $height - $distance - 1 : $height), _
+						$totalWidth + $distance * 3, _
+						$distance)
+				GUICtrlSetBkColor(-1, $colorMainButton)
 			EndIf
 
 			$currentX += $sizes[$x] + $distance + Round($distBt / 2)
 
-			If $time Then
-				$rubleIcon = CreatePngControl($resourcesPath & "OutOfTimeIcon.png", $iconWidth, $iconWidth)
-				GUICtrlSetPos(-1, $dX - Round($distBt * 1.5) - $iconWidth, $currentY + Round($height * 0.2))
-				$showOutOfTimeWarning = True
-			EndIf
+			Local $iconsArray[3][2]
+			$iconsArray[0][0] = $time
+			$iconsArray[0][1] = "OutOfTimeIcon.png"
 
-			If $cash Then
-				$rubleIcon = CreatePngControl($resourcesPath & "RubleIcon.png", $iconWidth, $iconWidth)
-				GUICtrlSetPos(-1, $dX - Round($distBt * 1.5) - $iconWidth - $iconWidth * $time * 1.2, _
-					$currentY + Round($height * 0.2))
-				$showCashWarning = True
-			EndIf
+			$iconsArray[1][0] = $cash
+			$iconsArray[1][1] = "RubleIcon.png"
 
-			If $xray Then
-				$rubleIcon = CreatePngControl($resourcesPath & "XrayIcon.png", $iconWidth, $iconWidth)
-				GUICtrlSetPos(-1, $dX - Round($distBt * 1.5) - $iconWidth - $iconWidth * ($time + $cash) * 1.2, _
-					$currentY + Round($height * 0.2))
-				$showXrayWarning = True
-			EndIf
+			$iconsArray[2][0] = $xray
+			$iconsArray[2][1] = "XrayIcon.png"
+
+			Local $initialX = $dX - Round($distBt * 1.5) - $iconWidth
+			For $y = 0 To UBound($iconsArray, $UBOUND_ROWS) - 1
+				If Not $iconsArray[$y][0] Then ContinueLoop
+
+				Local $tmp = CreatePngControl($resourcesPath & $iconsArray[$y][1], $iconWidth, $iconWidth)
+				GUICtrlSetPos(-1, $initialX, $currentY + Round($height * 0.2))
+				$initialX -= $iconWidth * 1.2
+			Next
+
+			If $time Then $showOutOfTimeWarning = True
+			If $cash Then $showCashWarning = True
+			If $xray Then $showXrayWarning = True
 		Next
 
 		$currentY += $height + $distance
 		$currentX = $startX + Round($distBt / 2)
 
-		If $i = 0 Then
-			$currentY -= $distance
-		EndIf
+		If $i = 0 Then $currentY -= $distance
 	Next
 
-	If $showCashWarning Or $showOutOfTimeWarning Or $showXrayWarning Then
+	Local $showWarning = Int($showCashWarning) + Int($showOutOfTimeWarning) + Int($showXrayWarning)
+	If $showWarning Then
 		Local $message = ""
 		Local $textHeight = 1.5
-		If $showCashWarning And Not $showOutOfTimeWarning Then
-			$message = "Имеются записи, запланированные за наличный расчет" & @CRLF & _
-					   "Необходимо заранее оплатить данные приемы"
-		ElseIf $showOutOfTimeWarning And Not $showCashWarning Then
-			$message = "Имеются записи с пропущенным временем начала" & @CRLF & _
-					   "Необходимо согласовать перенос на другое время"
+		If $showCashWarning And _
+				Not $showOutOfTimeWarning And _
+				Not $showXrayWarning Then
+			$message = $textAppointmentsWarningCash
+		ElseIf $showOutOfTimeWarning And _
+				Not $showCashWarning And _
+				Not $showXrayWarning Then
+			$message = $textAppointmentsWarningTime
+		ElseIf $showXrayWarning And _
+				Not $showCashWarning And _
+				Not $showOutOfTimeWarning Then
+			$message = $textAppointmentsWarningXray
 		Else
-			$message = "Для отметки о посещении необходимо обратиться в регистратуру"
-			$textHeight = 1.0
+			$message = $textAppointmentsWarningGeneral
+			If Not StringInStr($message, @CRLF) Then $textHeight = 1.0
 		EndIf
 
-
 		CreateLabel($message, _
-			$startX, _
-			$currentY, _
-			$totalWidth + $distance * 3, _
-			Round($height * $textHeight), _
-			$alternateTextColor, _
-			$errorTitleColor, _
-			$gui, _
-			Round($btFontSize * 0.8))
+				$startX, _
+				$currentY, _
+				$totalWidth + $distance * 3, _
+				Round($height * $textHeight), _
+				$colorAlternateText, _
+				$colorErrorTitle, _
+				$gui, _
+				Round($fontSize * 0.8), _
+				$fontWeightAppointments)
 
-		 $currentY += $height + $distance
+		$currentY += $height + $distance
 
-		 GUISetFont($btFontSize * 0.8)
+		GUISetFont($fontSize * 0.7, $fontWeightAppointments, 0, $fontName, $gui, $fontQuality)
 
-;~ 		If $showOutOfTimeWarning Then
-;~ 			$rubleIcon = CreatePngControl($resourcesPath & "OutOfTimeIcon.png", $iconWidth, $iconWidth)
-;~ 			GUICtrlSetPos(-1, $startX, $currentY)
-;~ 			Local $tmp = GUICtrlCreateLabel(" - пропущено время", _
-;~ 				$startX + $iconWidth, _
-;~ 				$currentY, _
-;~ 				-1, _
-;~ 				$iconWidth, _
-;~ 				$SS_CENTERIMAGE)
-;~ 			Local $tmp2 = ControlGetPos($gui, -1, $tmp)
-;~ 			$startX = $tmp2[0] + $tmp2[2] + $distance * 3
-;~ 		EndIf
+		If Not $showIconsDescription Then Return
+		If $showWarning < 2 Then Return
 
-;~ 		If $showCashWarning Then
-;~ 			$rubleIcon = CreatePngControl($resourcesPath & "RubleIcon.png", $iconWidth, $iconWidth)
-;~ 			GUICtrlSetPos(-1, $startX, $currentY)
-;~ 			Local $tmp = GUICtrlCreateLabel(" - наличный расчет", _
-;~ 				$startX + $iconWidth, _
-;~ 				$currentY, _
-;~ 				-1, _
-;~ 				$iconWidth, _
-;~ 				$SS_CENTERIMAGE)
-;~ 			Local $tmp2 = ControlGetPos($gui, -1, $tmp)
-;~ 			$startX = $tmp2[0] + $tmp2[2] + $distance * 3
-;~ 		EndIf
+		Local $labelsArray[3][3]
+		$labelsArray[0][0] = $showOutOfTimeWarning
+		$labelsArray[0][1] = "OutOfTimeIcon.png"
+		$labelsArray[0][2] = " - пропущено время"
 
-;~ 		If $showXrayWarning Then
-;~ 			$rubleIcon = CreatePngControl($resourcesPath & "XrayIcon.png", $iconWidth, $iconWidth)
-;~ 			GUICtrlSetPos(-1, $startX, $currentY)
-;~ 			Local $tmp = GUICtrlCreateLabel(" - лучевое отделение", _
-;~ 				$startX + $iconWidth, _
-;~ 				$currentY, _
-;~ 				-1, _
-;~ 				$iconWidth, _
-;~ 				$SS_CENTERIMAGE)
-;~ 			Local $tmp2 = ControlGetPos($gui, -1, $tmp)
-;~ 			$startX = $tmp2[0] + $tmp2[2] + $distance * 3
-;~ 		EndIf
-	Else
-		For $i = 1 To $arraySize
-			Local $idToUpdate = $head[$i][0]
-			Local $updateSql = "Update Schedule Set ScreenVisit = 1, ClVisit = 1, VisitTime = 'now', " & _
-							   "Comment=(Select CoalEsce(Comment,'') From Schedule Where SchedId = " & $idToUpdate & ")||' " & _
-							   "ИНФОМАТ' Where CoalEsce(ClVisit,0) = 0 And SchedId = " & $idToUpdate
+		$labelsArray[1][0] = $showCashWarning
+		$labelsArray[1][1] = "RubleIcon.png"
+		$labelsArray[1][2] = " - наличный расчет"
 
-			ExecuteSQL($updateSql)
-			ToLog("Setting visit mark for: " & $idToUpdate)
+		$labelsArray[2][0] = $showXrayWarning
+		$labelsArray[2][1] = "XrayIcon.png"
+		$labelsArray[2][2] = " - лучевое отделение"
+
+		Local $startX = $dX / 2 + $distance * 3
+		Local $arraySize = UBound($labelsArray, $UBOUND_ROWS) - 1
+		For $i = 0 To $arraySize
+			If Not $labelsArray[$i][0] Then ContinueLoop
+
+			$startX -= ($iconWidth + $distance * 3 + GetOptimalLabelWidth($labelsArray[$i][2], $gui)) / 2
+		Next
+
+		For $i = 0 To $arraySize
+			If Not $labelsArray[$i][0] Then ContinueLoop
+
+			Local $tmp = CreatePngControl($resourcesPath & $labelsArray[$i][1], $iconWidth, $iconWidth)
+			GUICtrlSetPos(-1, $startX, $currentY)
+			$tmp = GUICtrlCreateLabel($labelsArray[$i][2], _
+					$startX + $iconWidth, _
+					$currentY, _
+					 - 1, _
+					$iconWidth, _
+					$SS_CENTERIMAGE)
+
+			Local $tmp2 = ControlGetPos($gui, -1, $tmp)
+			$startX = $tmp2[0] + $tmp2[2] + $distance * 3
 		Next
 	EndIf
-
-	Return $showCashWarning Or $showOutOfTimeWarning Or $showXrayWarning
-EndFunc
+EndFunc   ;==>CreateAppointmentsTable
 
 
 
 
-
-Func UpdateButtonBackgroundColor($id, $bkColor = $mainButtonColor, $glowColor = $mainButtonPressedColor)
+Func UpdateButtonBackgroundColor($id, $bkColor = $colorMainButton, $glowColor = $colorMainButtonPressed)
 	If $enteredCode Then $timeCounter = 0
 
 	If $previousButtonPressedID[0] Then
@@ -859,7 +874,7 @@ Func UpdateButtonBackgroundColor($id, $bkColor = $mainButtonColor, $glowColor = 
 	$previousButtonPressedID[0] = $id
 	$previousButtonPressedID[1] = $bkColor
 	$pressedButtonTimeCounter = 1
-EndFunc
+EndFunc   ;==>UpdateButtonBackgroundColor
 
 
 Func UpdateInput()
@@ -867,11 +882,11 @@ Func UpdateInput()
 
 	Local $codeLenght = StringLen($enteredCode)
 	If $codeLenght = 0 Or $codeLenght = 9 Then
-		GUICtrlSetColor($bt_next, $disabledTextColor)
-		GUICtrlSetBkColor($bt_next, $disabledColor)
+		GUICtrlSetColor($bt_next, $colorDisabledText)
+		GUICtrlSetBkColor($bt_next, $colorDisabled)
 	ElseIf $codeLenght = 10 Then
-		GUICtrlSetColor($bt_next, $alternateTextColor)
-		GUICtrlSetBkColor($bt_next, $okButtonColor)
+		GUICtrlSetColor($bt_next, $colorAlternateText)
+		GUICtrlSetBkColor($bt_next, $colorOkButton)
 	EndIf
 
 	For $i = 1 To $codeLenght
@@ -879,13 +894,13 @@ Func UpdateInput()
 	Next
 
 	ControlSetText($mainGui, "", $inp_pincode, $format)
-EndFunc
+EndFunc   ;==>UpdateInput
 
 
 Func UpdateTimeLabel()
 	Local $newTime = @HOUR & ":" & @MIN
 	GUICtrlSetData($timeLabel, $newTime)
-EndFunc
+EndFunc   ;==>UpdateTimeLabel
 
 
 
@@ -894,12 +909,12 @@ EndFunc
 Func GetDatabaseAvailabilityStatus()
 	Local $dbAvailable = False
 	Local $sqlQuery = "select date 'Now' from rdb$database"
-	Local $res = ExecuteSql($sqlQuery)
+	Local $res = ExecuteSQL($sqlQuery)
 
 	If Not IsArray($res) Or $res < 0 Then Return False
 
 	Return True
-EndFunc
+EndFunc   ;==>GetDatabaseAvailabilityStatus
 
 
 Func GetOptimalLabelWidth($text, $gui)
@@ -907,53 +922,85 @@ Func GetOptimalLabelWidth($text, $gui)
 	Local $tempLabelPos = ControlGetPos($gui, "", $tempLabel)
 	GUICtrlDelete($tempLabel)
 	Return $tempLabelPos[2]
-EndFunc
+EndFunc   ;==>GetOptimalLabelWidth
 
 
 Func GetFullDate($hour, $minute)
-	If $hour < 10 Then $hour = "0" & $hour
-	If $minute < 10 Then $minute = "0" & $minute
 	Local $today = @YEAR & "/" & @MON & "/" & @MDAY
 	Return $today & " " & $hour & ":" & $minute & ":00"
-EndFunc
+EndFunc   ;==>GetFullDate
 
 
 Func GetAppointmentsForCurrentTime($array)
 	If Not IsArray($array) Then Return
 
-	Local $retArray[0][UBound($array, $UBOUND_COLUMNS)]
+	Local $columnsQuantity = UBound($array, $UBOUND_COLUMNS)
+	Local $rowsQuantity = UBound($array, $UBOUND_ROWS) - 1
 
-	For $i = 0 To UBound($array, $UBOUND_ROWS) - 1
-		Local $currentRow = _ArrayExtract($array, $i, $i)
+	Local $retArray[0][$columnsQuantity]
+	_ArrayColInsert($array, $columnsQuantity)
 
-		Local $hour = $currentRow[0][2]
+	For $i = 0 To $rowsQuantity
+		Local $hour = $array[$i][2]
 		If StringLen($hour) < 2 Then $hour = "0" & $hour
 
-		Local $minute = $currentRow[0][3]
+		Local $minute = $array[$i][3]
 		If StringLen($minute) < 2 Then $minute = "0" & $minute
 
 		Local $fullTime = GetFullDate($hour, $minute)
-		Local $timeDiff = _DateDiff('n', _NowCalc(), $fullTime)
-
-		If $timeDiff < $bottomAppointmentTimeBoundaries Then
-			If $array[$i][8] Then
-				ContinueLoop
-			Else
-				$currentRow[0][8] = 1
-			EndIf
-		ElseIf $timeDiff > $topAppointmentTimeBoundaries Then
-			ContinueLoop
-		EndIf
-
-		$currentRow[0][2] = $hour & ":" & $minute
-		_ArrayAdd($retArray, $currentRow)
+		$array[$i][$columnsQuantity] = _DateDiff('n', _NowCalc(), $fullTime)
+		$array[$i][2] = $hour & ":" & $minute
 	Next
 
-	_ArraySort($retArray, 0, -1, -1, 2)
-	_ArrayColDelete($retArray, 3)
+	_ArraySort($array, 0, -1, -1, 2)
+	_ArrayColDelete($array, 3)
+
+	Local $previousAdded = False
+	For $i = 0 To $rowsQuantity
+		Local $currentRow = _ArrayExtract($array, $i, $i)
+		Local $timeDiff = $currentRow[0][$columnsQuantity - 1]
+
+		If $timeDiff < $timeBoundariesPast * -1 Then
+			If $currentRow[0][7] Then ContinueLoop
+		ElseIf $timeDiff > $timeBoundariesFuture And _
+				$timeBoundariesFuture <> 0 Then
+			If Not $i Or _
+					Not $previousAdded Or _
+					$timeDiff - $array[$i - 1][$columnsQuantity - 1] > _
+					$timeBoundariesAcceptableDifferenceBetweenAppointments Then _
+					ExitLoop
+		EndIf
+
+		_ArrayAdd($retArray, $currentRow)
+		$previousAdded = True
+	Next
+
+	_ArrayColDelete($retArray, 7)
+
+	For $i = 0 To UBound($retArray, $UBOUND_ROWS) - 1
+		If $retArray[$i][$columnsQuantity - 2] < $timeBoundariesPast * -1 Then
+			$retArray[$i][$columnsQuantity - 2] = 1
+		Else
+			$retArray[$i][$columnsQuantity - 2] = 0
+		EndIf
+	Next
 
 	Return $retArray
-EndFunc
+EndFunc   ;==>GetAppointmentsForCurrentTime
+
+
+Func GetTextFromIni($sectionName, $sql = False)
+	Local $array = IniReadSection($iniFile, $sectionName)
+	Local $tmp = ""
+	Local $arrayRows = UBound($array, $UBOUND_ROWS) - 1
+
+	For $i = 1 To $arrayRows
+		$tmp &= $array[$i][1]
+		If $i < $arrayRows Then $tmp &= $sql ? " " : @CRLF
+	Next
+
+	Return $tmp
+EndFunc   ;==>GetTextFromIni
 
 
 
@@ -962,8 +1009,8 @@ Func PrintAppontments($array, $name, $surname)
 	ToLog("PrintAppontments")
 	Local $err = "!!! Error: "
 	If Not IsArray($array) Or _
-		Not UBound($array, $UBOUND_ROWS) Or _
-		UBound($array, $UBOUND_COLUMNS) < 5 Then
+			Not UBound($array, $UBOUND_ROWS) Or _
+			UBound($array, $UBOUND_COLUMNS) < 5 Then
 		ToLog($err & "wrong array format")
 		Return
 	EndIf
@@ -982,13 +1029,13 @@ Func PrintAppontments($array, $name, $surname)
 	EndIf
 
 	Local $excel = _Excel_Open(False, False, False, False, True)
-	If @error Then
+	If $excel = 0 Or @error Then
 		ToLog($err & "cannot connect to Excel instance, error code: " & @error)
 		Return
 	EndIf
 
 	Local $book = _Excel_BookOpen($excel, $templatePath)
-	If @error Then
+	If $book = 0 Or @error Then
 		Local $tmp = ""
 		Switch @error
 			Case 1
@@ -1010,7 +1057,7 @@ Func PrintAppontments($array, $name, $surname)
 	If @error Then ExcelWriteErrorToLog(@error)
 
 	_Excel_RangeWrite($book, $worksheet, @MDAY & "." & @MON & "." & @YEAR & _
-		", " & @HOUR & ":" & @MIN, "A" & $dateRow)
+			", " & @HOUR & ":" & @MIN, "A" & $dateRow)
 	If @error Then ExcelWriteErrorToLog(@error)
 
 	Local $needToPay = False
@@ -1018,7 +1065,7 @@ Func PrintAppontments($array, $name, $surname)
 	Local $xray = False
 
 	Local $currentRow = $startRow
-	Local $maxElement = UBound($array, $UBOUND_ROWS) -1
+	Local $maxElement = UBound($array, $UBOUND_ROWS) - 1
 	If $maxElement > 5 Then $maxElement = 5
 
 	For $i = 0 To $maxElement
@@ -1035,27 +1082,43 @@ Func PrintAppontments($array, $name, $surname)
 		_Excel_RangeWrite($book, $worksheet, $dept, "A" & $currentRow + 2)
 		If @error Then ExcelWriteErrorToLog(@error)
 
+		;========= cash ==========
 		If $array[$i][6] Then
 			$needToPay = True
 			_Excel_RangeCopyPaste($book.ActiveSheet, _
-				$book.ActiveSheet.Range("A" & $formatStyle), _
-				$book.ActiveSheet.Range("A" & $currentRow + 3))
+					$book.ActiveSheet.Range("A" & $formatStyle), _
+					$book.ActiveSheet.Range("A" & $currentRow + 3))
 			If @error Then ExcelCopyPasteErrorToLog(@error)
 
-			_Excel_RangeWrite($book, $worksheet, "Прием запланирован за наличный расчет", "A" & $currentRow + 3)
+			_Excel_RangeWrite($book, $worksheet, $textPrintNotificationCash, "A" & $currentRow + 3)
 			If @error Then ExcelWriteErrorToLog(@error)
 
 			$currentRow += 1
 		EndIf
 
+		;========= xray ==========
 		If $array[$i][7] Then
-			$outOfTime = True
+			$xray = True
 			_Excel_RangeCopyPaste($book.ActiveSheet, _
-				$book.ActiveSheet.Range("A" & $formatStyle), _
-				$book.ActiveSheet.Range("A" & $currentRow + 3))
+					$book.ActiveSheet.Range("A" & $formatStyle), _
+					$book.ActiveSheet.Range("A" & $currentRow + 3))
 			If @error Then ExcelCopyPasteErrorToLog(@error)
 
-			_Excel_RangeWrite($book, $worksheet, "Пропущено время начала приема", "A" & $currentRow + 3)
+			_Excel_RangeWrite($book, $worksheet, $textPrintNotificationXray, "A" & $currentRow + 3)
+			If @error Then ExcelWriteErrorToLog(@error)
+
+			$currentRow += 1
+		EndIf
+
+		;========= time ==========
+		If $array[$i][8] Then
+			$outOfTime = True
+			_Excel_RangeCopyPaste($book.ActiveSheet, _
+					$book.ActiveSheet.Range("A" & $formatStyle), _
+					$book.ActiveSheet.Range("A" & $currentRow + 3))
+			If @error Then ExcelCopyPasteErrorToLog(@error)
+
+			_Excel_RangeWrite($book, $worksheet, $textPrintNotificationTime, "A" & $currentRow + 3)
 			If @error Then ExcelWriteErrorToLog(@error)
 
 			$currentRow += 1
@@ -1063,13 +1126,13 @@ Func PrintAppontments($array, $name, $surname)
 
 		If $i < $maxElement Then
 			_Excel_RangeCopyPaste($book.ActiveSheet, _
-				$book.ActiveSheet.Range("A" & $startRow - 1), _
-				$book.ActiveSheet.Range("A" & $currentRow + 3))
+					$book.ActiveSheet.Range("A" & $startRow - 1), _
+					$book.ActiveSheet.Range("A" & $currentRow + 3))
 			If @error Then ExcelCopyPasteErrorToLog(@error)
 
 			_Excel_RangeCopyPaste($book.ActiveSheet, _
-				$book.ActiveSheet.Range("A" & $startRow & ":A" & $startRow + 2), _
-				$book.ActiveSheet.Range("A" & $currentRow + 4))
+					$book.ActiveSheet.Range("A" & $startRow & ":A" & $startRow + 2), _
+					$book.ActiveSheet.Range("A" & $currentRow + 4))
 			If @error Then ExcelCopyPasteErrorToLog(@error)
 		EndIf
 
@@ -1077,44 +1140,38 @@ Func PrintAppontments($array, $name, $surname)
 	Next
 
 	Local $finalText = ""
-	If StringInStr($array[0][2], ":") Then
-		Local $tmp = StringSplit($array[0][2], ":", $STR_NOCOUNT)
-		Local $hour = $tmp[0]
-		Local $minute = $tmp[1]
 
-		Local $timeDiff = _DateDiff('n', _NowCalc(), GetFullDate($hour, $minute))
+	If Not $outOfTime Then
+		Local $hour = StringLeft($array[0][2], 2)
+		Local $minute = StringRight($array[0][2], 2)
+		Local $timeDiff = _DateDiff('n', GetFullDate($hour, $minute), _NowCalc())
 
-		If Not $outOfTime Then
-			If $timeDiff < 0 Then
-				$finalText &= "Вы опаздываете на ближайший прием, прошло минут: " & Abs($timeDiff) & @CRLF
-			Else
-				$finalText &= "До начала ближайщего приема осталось минут: " & $timeDiff & @CRLF
-			EndIf
+		If $timeDiff < 0 Then
+			$finalText &= StringReplace($textPrintMessageTimeLate, "*", $timeDiff) & @CRLF
+		Else
+			$finalText &= StringReplace($textPrintMessageTimeOk, "*", $timeDiff) & @CRLF
 		EndIf
 	EndIf
 
 
 	If $needToPay And Not $outOfTime Then
-		$finalText &= "У Вас имеются назначения за наличный расчет" & @CRLF & _
-					  "Просьба пройти в регистратуру для оплаты приема"
+		$finalText &= $textPrintMessageFinalCash
 	ElseIf $outOfTime And Not $needToPay Then
-		$finalText &= "У Вас имеются назначения у которых пропущено время начала" & @CRLF & _
-					  "Просьба пройти в регистратуру для согласования переноса"
+		$finalText &= $textPrintMessageFinalTime
 	ElseIf $needToPay And $outOfTime Then
-		$finalText &= "Для отметки о посещении" & @CRLF & _
-					  "Просьба пройти в регистратуру"
+		$finalText &= $textPrintMessageFinalMultiple
 	Else
-		$finalText &= "Просьба проходить на прием"
+		$finalText &= $textPrintMessageFinalOk
 	EndIf
 
 	_Excel_RangeCopyPaste($book.ActiveSheet, _
-		$book.ActiveSheet.Range("A" & $startRow - 1), _
-		$book.ActiveSheet.Range("A" & $currentRow - 1))
+			$book.ActiveSheet.Range("A" & $startRow - 1), _
+			$book.ActiveSheet.Range("A" & $currentRow - 1))
 	If @error Then ExcelCopyPasteErrorToLog(@error)
 
 	_Excel_RangeCopyPaste($book.ActiveSheet, _
-		$book.ActiveSheet.Range("A" & $startRow), _
-		$book.ActiveSheet.Range("A" & $currentRow))
+			$book.ActiveSheet.Range("A" & $startRow), _
+			$book.ActiveSheet.Range("A" & $currentRow))
 	If @error Then ExcelCopyPasteErrorToLog(@error)
 
 	_Excel_RangeWrite($book, $worksheet, $finalText, "A" & $currentRow)
@@ -1138,10 +1195,10 @@ Func PrintAppontments($array, $name, $surname)
 	EndIf
 
 	If Not FileExists($printedAppointmentListPath) Then _
-		DirCreate($printedAppointmentListPath)
+			DirCreate($printedAppointmentListPath)
 
 	_Excel_BookSaveAs($book, $printedAppointmentListPath & $name & " " & $surname & " " & _
-		@YEAR & @MON & @MDAY & @HOUR & @MIN & @SEC)
+			@YEAR & @MON & @MDAY & @HOUR & @MIN & @SEC)
 	If @error Then
 		Local $tmp = ""
 		Switch @error
@@ -1166,7 +1223,7 @@ Func PrintAppontments($array, $name, $surname)
 	Excel_Close($excel)
 
 	Return 1
-EndFunc
+EndFunc   ;==>PrintAppontments
 
 
 Func Excel_Close($excel)
@@ -1184,7 +1241,7 @@ Func Excel_Close($excel)
 		ToLog("!!! Error - cannot close excel application: " & $tmp & ", error code: " & @error)
 	EndIf
 	If ProcessExists("EXCEL.exe") Then ProcessClose("EXCEL.exe")
-EndFunc
+EndFunc   ;==>Excel_Close
 
 
 Func Excel_BookClose($book)
@@ -1201,7 +1258,7 @@ Func Excel_BookClose($book)
 		EndSwitch
 		ToLog("!!! Error - cannot close workbook: " & $tmp & ", error code: " & @error)
 	EndIf
-EndFunc
+EndFunc   ;==>Excel_BookClose
 
 
 Func ExcelWriteErrorToLog($code)
@@ -1221,7 +1278,7 @@ Func ExcelWriteErrorToLog($code)
 			$tmp = "Error occurred when writing data using the transpose method. @extended is set to the COM error code"
 	EndSwitch
 	ToLog("!!! Error - " & $tmp & ", error code: " & $code)
-EndFunc
+EndFunc   ;==>ExcelWriteErrorToLog
 
 
 Func ExcelCopyPasteErrorToLog($code)
@@ -1243,7 +1300,7 @@ Func ExcelCopyPasteErrorToLog($code)
 			$tmp = "$vSourceRange and $vTargetRange can't be set to keyword Default at the same time"
 	EndSwitch
 	ToLog("!!! Error - " & $tmp & ", error code: " & $code)
-EndFunc
+EndFunc   ;==>ExcelCopyPasteErrorToLog
 
 
 
@@ -1273,7 +1330,7 @@ Func ExecuteSQL($sql)
 	$adoConnection = 0
 
 	Return $result
-EndFunc
+EndFunc   ;==>ExecuteSQL
 
 
 Func NumPressed($n, $id)
@@ -1282,7 +1339,7 @@ Func NumPressed($n, $id)
 		$enteredCode &= $n
 		UpdateInput()
 	EndIf
-EndFunc
+EndFunc   ;==>NumPressed
 
 
 Func ToLog($message)
@@ -1290,19 +1347,19 @@ Func ToLog($message)
 	$message &= @CRLF
 	ConsoleWrite($message)
 	_FileWriteLog($logFilePath, $message)
-EndFunc
+EndFunc   ;==>ToLog
 
 
 Func HandleComError()
-	  ConsoleWrite("error.description: " & @TAB & $oMyError.description  & @CRLF & _
-				  "err.windescription:"   & @TAB & $oMyError.windescription & @CRLF & _
-				  "err.number is: "       & @TAB & hex($oMyError.number,8)  & @CRLF & _
-				  "err.lastdllerror is: "   & @TAB & $oMyError.lastdllerror   & @CRLF & _
-				  "err.scriptline is: "   & @TAB & $oMyError.scriptline   & @CRLF & _
-				  "err.source is: "       & @TAB & $oMyError.source       & @CRLF & _
-				  "err.helpfile is: "       & @TAB & $oMyError.helpfile     & @CRLF & _
-				  "err.helpcontext is: " & @TAB & $oMyError.helpcontext & @CRLF)
-Endfunc
+	ConsoleWrite("error.description: " & @TAB & $oMyError.description & @CRLF & _
+			"err.windescription:" & @TAB & $oMyError.windescription & @CRLF & _
+			"err.number is: " & @TAB & Hex($oMyError.number, 8) & @CRLF & _
+			"err.lastdllerror is: " & @TAB & $oMyError.lastdllerror & @CRLF & _
+			"err.scriptline is: " & @TAB & $oMyError.scriptline & @CRLF & _
+			"err.source is: " & @TAB & $oMyError.source & @CRLF & _
+			"err.helpfile is: " & @TAB & $oMyError.helpfile & @CRLF & _
+			"err.helpcontext is: " & @TAB & $oMyError.helpcontext & @CRLF)
+EndFunc   ;==>HandleComError
 
 
 Func OnExit()
@@ -1322,20 +1379,20 @@ Func OnExit()
 	EndSwitch
 	ToLog("-----Exiting-----")
 	SendEmail("-----Exiting----- " & @exitMethod)
-EndFunc
+EndFunc   ;==>OnExit
 
 
 Func SendEmail($messageToSend)
 	Local $send_email = True
 	Local $current_pc_name = @ComputerName
-	If Not $send_email Then Exit
+	If Not $send_email Then Return
 
 	Local $title = "Infomat notification"
 	$messageToSend &= @CRLF & @CRLF & _
-		"---------------------------------------" & @CRLF & _
-		"This is automatically generated message" & @CRLF & _
-		"Sended from: " & $current_pc_name & @CRLF & _
-		"Please do not reply"
+			"---------------------------------------" & @CRLF & _
+			"This is automatically generated message" & @CRLF & _
+			"Sended from: " & $current_pc_name & @CRLF & _
+			"Please do not reply"
 
 	ToLog(@CRLF & "-----Sending email-----")
 	Local $login = ""
@@ -1345,71 +1402,71 @@ Func SendEmail($messageToSend)
 	Local $to = ""
 
 	_INetSmtpMailCom($server, $from, $login, $to, _
-		$title, $messageToSend, "", "", "", $login, $password)
-EndFunc
+			$title, $messageToSend, "", "", "", $login, $password)
+EndFunc   ;==>SendEmail
 
 
-Func _INetSmtpMailCom($s_SmtpServer, $s_FromName, $s_FromAddress, $s_ToAddress, $s_Subject = "", $as_Body = "", $s_AttachFiles = "", $s_CcAddress = "", $s_BccAddress = "", $s_Username = "", $s_Password = "",$IPPort=25, $ssl=0)
+Func _INetSmtpMailCom($s_SmtpServer, $s_FromName, $s_FromAddress, $s_ToAddress, $s_Subject = "", $as_Body = "", $s_AttachFiles = "", $s_CcAddress = "", $s_BccAddress = "", $s_Username = "", $s_Password = "", $IPPort = 25, $ssl = 0)
 
-    Local $objEmail = ObjCreate("CDO.Message")
-    Local $i_Error = 0
-    Local $i_Error_desciption = ""
+	Local $objEmail = ObjCreate("CDO.Message")
+	Local $i_Error = 0
+	Local $i_Error_desciption = ""
 
-    $objEmail.From = '"' & $s_FromName & '" <' & $s_FromAddress & '>'
-    $objEmail.To = $s_ToAddress
+	$objEmail.From = '"' & $s_FromName & '" <' & $s_FromAddress & '>'
+	$objEmail.To = $s_ToAddress
 
-    If $s_CcAddress <> "" Then $objEmail.Cc = $s_CcAddress
-    If $s_BccAddress <> "" Then $objEmail.Bcc = $s_BccAddress
+	If $s_CcAddress <> "" Then $objEmail.Cc = $s_CcAddress
+	If $s_BccAddress <> "" Then $objEmail.Bcc = $s_BccAddress
 
-    $objEmail.Subject = $s_Subject
+	$objEmail.Subject = $s_Subject
 
-    If StringInStr($as_Body,"<") and StringInStr($as_Body,">") Then
-        $objEmail.HTMLBody = $as_Body
-    Else
-        $objEmail.Textbody = $as_Body & @CRLF
-	 EndIf
+	If StringInStr($as_Body, "<") And StringInStr($as_Body, ">") Then
+		$objEmail.HTMLBody = $as_Body
+	Else
+		$objEmail.Textbody = $as_Body & @CRLF
+	EndIf
 
-	 ProgressSet(50)
+	ProgressSet(50)
 
 ;~    ConsoleWrite($s_AttachFiles)
-    If $s_AttachFiles <> "" Then
-        Local $S_Files2Attach = StringSplit($s_AttachFiles, ";")
+	If $s_AttachFiles <> "" Then
+		Local $S_Files2Attach = StringSplit($s_AttachFiles, ";")
 ;~ 		_ArrayDisplay($S_Files2Attach)
-        For $x = 1 To $S_Files2Attach[0] - 1
-            $S_Files2Attach[$x] = _PathFull ($S_Files2Attach[$x])
-            If FileExists($S_Files2Attach[$x]) Then
-                $objEmail.AddAttachment ($S_Files2Attach[$x])
-            Else
-                $i_Error_desciption = $i_Error_desciption & @lf & 'File not found to attach: ' & $S_Files2Attach[$x]
+		For $x = 1 To $S_Files2Attach[0] - 1
+			$S_Files2Attach[$x] = _PathFull($S_Files2Attach[$x])
+			If FileExists($S_Files2Attach[$x]) Then
+				$objEmail.AddAttachment($S_Files2Attach[$x])
+			Else
+				$i_Error_desciption = $i_Error_desciption & @LF & 'File not found to attach: ' & $S_Files2Attach[$x]
 				ConsoleWriteError("file not found")
-                SetError(1)
-                return 0
-            EndIf
-        Next
-    EndIf
-    $objEmail.Configuration.Fields.Item ("http://schemas.microsoft.com/cdo/configuration/sendusing") = 2
-    $objEmail.Configuration.Fields.Item ("http://schemas.microsoft.com/cdo/configuration/smtpserver") = $s_SmtpServer
-    $objEmail.Configuration.Fields.Item ("http://schemas.microsoft.com/cdo/configuration/smtpserverport") = $IPPort
-   ProgressSet(60)
-    ;Authenticated SMTP
-    If $s_Username <> "" Then
-        $objEmail.Configuration.Fields.Item ("http://schemas.microsoft.com/cdo/configuration/smtpauthenticate") = 1
-        $objEmail.Configuration.Fields.Item ("http://schemas.microsoft.com/cdo/configuration/sendusername") = $s_Username
-        $objEmail.Configuration.Fields.Item ("http://schemas.microsoft.com/cdo/configuration/sendpassword") = $s_Password
-    EndIf
-    If $Ssl Then
-        $objEmail.Configuration.Fields.Item ("http://schemas.microsoft.com/cdo/configuration/smtpusessl") = True
-    EndIf
-   ProgressSet(70)
-    ;Update settings
-    $objEmail.Configuration.Fields.Update
-   ProgressSet(80)
-    ; Sent the Message
-    $objEmail.Send
+				SetError(1)
+				Return 0
+			EndIf
+		Next
+	EndIf
+	$objEmail.Configuration.Fields.Item("http://schemas.microsoft.com/cdo/configuration/sendusing") = 2
+	$objEmail.Configuration.Fields.Item("http://schemas.microsoft.com/cdo/configuration/smtpserver") = $s_SmtpServer
+	$objEmail.Configuration.Fields.Item("http://schemas.microsoft.com/cdo/configuration/smtpserverport") = $IPPort
+	ProgressSet(60)
+	;Authenticated SMTP
+	If $s_Username <> "" Then
+		$objEmail.Configuration.Fields.Item("http://schemas.microsoft.com/cdo/configuration/smtpauthenticate") = 1
+		$objEmail.Configuration.Fields.Item("http://schemas.microsoft.com/cdo/configuration/sendusername") = $s_Username
+		$objEmail.Configuration.Fields.Item("http://schemas.microsoft.com/cdo/configuration/sendpassword") = $s_Password
+	EndIf
+	If $ssl Then
+		$objEmail.Configuration.Fields.Item("http://schemas.microsoft.com/cdo/configuration/smtpusessl") = True
+	EndIf
+	ProgressSet(70)
+	;Update settings
+	$objEmail.Configuration.Fields.Update
+	ProgressSet(80)
+	; Sent the Message
+	$objEmail.Send
 	ProgressSet(90)
-    if @error then
-        SetError(2)
+	If @error Then
+		SetError(2)
 		ProgressOff
-        ;return $oMyRet[1]
-    EndIf
-EndFunc
+		;return $oMyRet[1]
+	EndIf
+EndFunc   ;==>_INetSmtpMailCom
