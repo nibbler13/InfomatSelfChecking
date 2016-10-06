@@ -1,6 +1,6 @@
 #Region ;**** Directives created by AutoIt3Wrapper_GUI ****
 #AutoIt3Wrapper_Icon=Resources\icon.ico
-#pragma compile(ProductVersion, 1.1)
+#pragma compile(ProductVersion, 1.2)
 #pragma compile(UPX, true)
 #pragma compile(CompanyName, 'ООО Клиника ЛМС')
 #pragma compile(FileDescription, Приложения для инфомата для самостоятельной отметки о посещении)
@@ -29,6 +29,7 @@
 #include <Excel.au3>
 #include <GuiButton.au3>
 #include <AutoItConstants.au3>
+#include <ScreenCapture.au3>
 
 
 
@@ -39,10 +40,11 @@ Local $printedAppointmentListPath = $scriptDir & "\Printed Appointments List\"
 Local $logsPath = $scriptDir & "\Logs\"
 
 Local $errStr = "===ERROR=== "
+Local $sMailDeveloperAddress = ""
 Local $iniFile = $resourcesPath & "\InfomatSelfChecking.ini"
 If Not FileExists($iniFile) Then
 	MsgBox($MB_ICONERROR, "Critical error!", "Cannot find the settings file:" & @CRLF & $iniFile & _
-			@CRLF & @CRLF & "Please contact to developer: " & @CRLF & "Mail: nn-admin@bzklinika.ru" & @CRLF & _
+			@CRLF & @CRLF & "Please contact to developer: " & @CRLF & "Mail: " & $sMailDeveloperAddress & @CRLF & _
 			"Internal phone number: 31-555")
 	ToLog($errStr & "Cannot find the settings file:" & $iniFile)
 	Exit
@@ -51,25 +53,12 @@ EndIf
 Local $oMyError = ObjEvent("AutoIt.Error", "HandleComError")
 OnAutoItExitRegister("OnExit")
 
-Local $dX = @DesktopWidth
-Local $dY = @DesktopHeight
-;~ Local $dX = 1280;1024
-;~ Local $dY = 1024;819
-
-Local $numButSize = Round($dY / 10)
-Local $distBt = Round($numButSize / 3)
-Local $headerHeight = Round($numButSize * 1.5)
-Local $initX = Round($dX / 2 - $numButSize * 1.5 - $distBt)
-Local $initY = Round($dY / 2 - $numButSize * 1.5 - $distBt)
-
-Local $timeLabel = ""
-Local $enteredCode = "";"9601811873"
-
 Local $generalSectionName = "general"
 Local $infoclinicaDB = IniRead($iniFile, $generalSectionName, "infoclinica_database_address", "")
 Local $formMaxTimeWait = IniRead($iniFile, $generalSectionName, "form_max_time_wait_in_seconds", 30) * 1000
 Local $showAppointmentsForm = IniRead($iniFile, $generalSectionName, "show_appointments_form", 0) = 0 ? False : True
 Local $showIconsDescription = IniRead($iniFile, $generalSectionName, "show_icons_description", 0) = 0 ? False : True
+Local $bDebug = IniRead($iniFile, $generalSectionName, "debug", 0) = 0 ? False : True
 
 Local $colorSectionName = "colors"
 Local $colorHeader = IniRead($iniFile, $colorSectionName, "header", 0x4e9b44)
@@ -90,7 +79,6 @@ Local $fontWeight = IniRead($iniFile, $fontSectionName, "main_font_weight", $FW_
 Local $fontQuality = IniRead($iniFile, $fontSectionName, "quality", $CLEARTYPE_QUALITY)
 Local $fontNameAppointments = IniRead($iniFile, $fontSectionName, "appointments_font_name", "Franklin Gothic Book")
 Local $fontWeightAppointments = IniRead($iniFile, $fontSectionName, "appointments_font_weight", $FW_NORMAL)
-Local $fontSize = Round($numButSize / 3)
 
 Local $timeBoundariesSectionName = "available_time_to_set_mark_in_minutes"
 Local $timeBoundariesPast = IniRead($iniFile, $timeBoundariesSectionName, "past", 10)
@@ -137,7 +125,37 @@ $sqlGetAppointments &= GetTextFromIni("sql_get_appointments", True)
 Local $sqlSetMark = "Update Schedule Set ScreenVisit = 1, ClVisit = 1, VisitTime = 'now', "
 $sqlSetMark &= GetTextFromIni("sql_set_mark", True)
 
+Local $sMailSectionName = "mail"
+Local $sMailBackupServer = ""
+Local $sMailBackupLogin = ""
+Local $sMailBackupPassword = ""
+Local $sMailBackupTo = $sMailDeveloperAddress
+Local $sMailBackupSend = True
+Local $sMailServer = IniRead($iniFile, $sMailSectionName, "server", $sMailBackupServer)
+Local $sMailLogin = IniRead($iniFile, $sMailSectionName, "login", $sMailBackupLogin)
+Local $sMailPassword = IniRead($iniFile, $sMailSectionName, "password", $sMailBackupPassword)
+Local $sMailTo = IniRead($iniFile, $sMailSectionName, "to", $sMailBackupTo)
+Local $sMailSend = IniRead($iniFile, $sMailSectionName, "send_email", $sMailBackupSend) = 0 ? False : True
 
+Local $sPrinterName = IniRead($iniFile, "printer", "name", "")
+
+Local $dX = @DesktopWidth
+Local $dY = @DesktopHeight
+If $bDebug Then
+	$dX = 1280
+	$dY = 1024
+EndIf
+
+Local $numButSize = Round($dY / 10)
+Local $distBt = Round($numButSize / 3)
+Local $headerHeight = Round($numButSize * 1.5)
+Local $initX = Round($dX / 2 - $numButSize * 1.5 - $distBt)
+Local $initY = Round($dY / 2 - $numButSize * 1.5 - $distBt)
+Local $fontSize = Round($numButSize / 3)
+
+Local $timeLabel = ""
+Local $enteredCode = ""
+If $bDebug Then $enteredCode = ""
 
 Local $pressedButtonTimeCounter = 0
 Local $previousButtonPressedID[] = [0, 0]
@@ -149,6 +167,36 @@ Local $timeCounter = 0
 Local $mainGui = 0
 Local $bt_next = 0
 Local $inp_pincode = 0
+
+Local $oExcel = _Excel_Open(False, False, False, False, True)
+
+Local $aPrinterStatusCodes[][] = [ _
+	[0,		  "Printer ready"], _
+	[1,		  "Printer paused"], _
+	[2,		  "Printer error"], _
+	[4,		  "Printer pending deletion"], _
+	[8, 	  "Paper jam"], _
+	[16,	  "Out of paper"], _
+	[32, 	  "Manual feed"], _
+	[64, 	  "Paper problem"], _
+	[128,	  "Printer offline"], _
+	[256,	  "IO active"], _
+	[512, 	  "Printer busy"], _
+	[1024,	  "Printing"], _
+	[2048, 	  "Printer output bin full"], _
+	[4096,    "Not available."], _
+	[8192, 	  "Waiting"], _
+	[16384,	  "Processing"], _
+	[32768,   "Initializing"], _
+	[65536,   "Warming up"], _
+	[131072,  "Toner low"], _
+	[262144,  "No toner"], _
+	[524288,  "Page punt"], _
+	[1048576, "User intervention"], _
+	[2097152, "Out of memory"], _
+	[4194304, "Door open"], _
+	[8388608, "Server unknown"], _
+	[6777216, "Power save"]]
 #EndRegion ====================== Variables ======================
 
 
@@ -158,7 +206,7 @@ FormMainGui()
 
 
 Func FormMainGui()
-;~ 	_WinAPI_ShowCursor(False)
+	If Not $bDebug Then _WinAPI_ShowCursor(False)
 	$mainGui = GUICreate("SelfChecking", $dX, $dY, 0, 0, $WS_POPUP, $WS_EX_TOPMOST)
 
 	CreateStandardDesign($mainGui, $textTitleMain, False, True)
@@ -491,7 +539,7 @@ Func FormShowAppointments($guiToDelete, $patientID, $name, $surname)
 					$textToShow = $textAppointmentsPrintOk & @CRLF & @CRLF & $textToShow
 				Else
 					$textToShow = $textAppointmentsPrintProblem & @CRLF & @CRLF & $textToShow
-					SendEmail($textToShow)
+					SendEmail("Не удалось распечатать список назначений пациента " & $patientID & " " & $name & " " & $surname)
 				EndIf
 				$needToClose = True
 		EndSwitch
@@ -831,7 +879,7 @@ Func CreateAppointmentsTable($res, $gui)
 
 		$labelsArray[2][0] = $showXrayWarning
 		$labelsArray[2][1] = "XrayIcon.png"
-		$labelsArray[2][2] = " - лучевое отделение"
+		$labelsArray[2][2] = " - отделение лучевой диагностики"
 
 		Local $startX = $dX / 2 + $distance * 3
 		Local $arraySize = UBound($labelsArray, $UBOUND_ROWS) - 1
@@ -1007,13 +1055,15 @@ EndFunc   ;==>GetTextFromIni
 
 Func PrintAppontments($array, $name, $surname)
 	ToLog("PrintAppontments")
-	Local $err = "!!! Error: "
 	If Not IsArray($array) Or _
-			Not UBound($array, $UBOUND_ROWS) Or _
-			UBound($array, $UBOUND_COLUMNS) < 5 Then
-		ToLog($err & "wrong array format")
+		Not UBound($array, $UBOUND_ROWS) Or _
+		UBound($array, $UBOUND_COLUMNS) < 9 Then
+
+		ToLog($errStr & "wrong array format")
 		Return
 	EndIf
+
+	If Not IsPrinterOk() Then Return
 
 	Local $dateRow = 4
 	Local $nameRow = 5
@@ -1024,39 +1074,33 @@ Func PrintAppontments($array, $name, $surname)
 
 	Local $templatePath = $resourcesPath & "PrintTemplate.xlsx"
 	If Not FileExists($templatePath) Then
-		ToLog($err & "template file not exist: " & $resourcesPath & "PrintTemplate.xlsx")
+		ToLog($errStr & "template file not exist: " & $resourcesPath & "PrintTemplate.xlsx")
 		Return
 	EndIf
 
-	Local $excel = _Excel_Open(False, False, False, False, True)
-	If $excel = 0 Or @error Then
-		ToLog($err & "cannot connect to Excel instance, error code: " & @error)
+	If Not IsObj($oExcel) Then $oExcel = _Excel_Open(False, False, False, False, True)
+	If Not IsObj($oExcel) Or @error Then
+		ToLog($errStr & "cannot connect to Excel instance, error code: " & @error)
 		Return
 	EndIf
 
-	Local $book = _Excel_BookOpen($excel, $templatePath)
-	If $book = 0 Or @error Then
-		Local $tmp = ""
-		Switch @error
-			Case 1
-				$tmp = "$oExcel is not an object or not an application object"
-			Case 2
-				$tmp = "Specified $sFilePath does not exist"
-			Case 3
-				$tmp = "Unable to open $sFilePath. @extended is set to the COM error code returned by the Open method"
-		EndSwitch
-		ToLog($err & "cannot open workbook " & $templatePath & ", " & $tmp & ", error code: " & @error)
-		Excel_Close($excel)
+	Local $oBook = _Excel_BookOpen($oExcel, $templatePath)
+	If Not IsObj($oBook) Or @error Then
+		Local $tmp = ["$oExcel is not an object or not an application object", _
+					  "Specified $sFilePath does not exist", _
+					  "Unable to open $sFilePath. @extended is set to the COM error code " & _
+					  "returned by the Open method"]
+		ToLog($errStr & "cannot open workbook " & $templatePath & ", " & $tmp[@error - 1] & ", error code: " & @error)
 		Return
 	EndIf
 
-	_Excel_RangeWrite($book, $worksheet, $name, "A" & $nameRow)
+	_Excel_RangeWrite($oBook, $worksheet, $name, "A" & $nameRow)
 	If @error Then ExcelWriteErrorToLog(@error)
 
-	_Excel_RangeWrite($book, $worksheet, $surname, "A" & $familyRow)
+	_Excel_RangeWrite($oBook, $worksheet, $surname, "A" & $familyRow)
 	If @error Then ExcelWriteErrorToLog(@error)
 
-	_Excel_RangeWrite($book, $worksheet, @MDAY & "." & @MON & "." & @YEAR & _
+	_Excel_RangeWrite($oBook, $worksheet, @MDAY & "." & @MON & "." & @YEAR & _
 			", " & @HOUR & ":" & @MIN, "A" & $dateRow)
 	If @error Then ExcelWriteErrorToLog(@error)
 
@@ -1071,68 +1115,55 @@ Func PrintAppontments($array, $name, $surname)
 	For $i = 0 To $maxElement
 		Local $timeAndCabinet = $array[$i][2] & ", кабинет " & $array[$i][5]
 		Local $doc = $array[$i][3]
-		Local $dept = StringLeft($array[$i][4], 1) & StringLower(StringRight($array[$i][4], StringLen($array[$i][4]) - 1))
+		Local $sTmp = $array[$i][4]
+		Local $dept = StringLeft($sTmp, 1) & StringLower(StringRight($sTmp, StringLen($sTmp) - 1))
 
-		_Excel_RangeWrite($book, $worksheet, $timeAndCabinet, "A" & $currentRow)
+		_Excel_RangeWrite($oBook, $worksheet, $timeAndCabinet, "A" & $currentRow)
 		If @error Then ExcelWriteErrorToLog(@error)
 
-		_Excel_RangeWrite($book, $worksheet, $doc, "A" & $currentRow + 1)
+		_Excel_RangeWrite($oBook, $worksheet, $doc, "A" & $currentRow + 1)
 		If @error Then ExcelWriteErrorToLog(@error)
 
-		_Excel_RangeWrite($book, $worksheet, $dept, "A" & $currentRow + 2)
+		_Excel_RangeWrite($oBook, $worksheet, $dept, "A" & $currentRow + 2)
 		If @error Then ExcelWriteErrorToLog(@error)
 
-		;========= cash ==========
-		If $array[$i][6] Then
-			$needToPay = True
-			_Excel_RangeCopyPaste($book.ActiveSheet, _
-					$book.ActiveSheet.Range("A" & $formatStyle), _
-					$book.ActiveSheet.Range("A" & $currentRow + 3))
+		Local $statusArray[3][2]
+		$statusArray[0][0] = $array[$i][6]
+		$statusArray[0][1] = $textPrintNotificationCash
+
+		$statusArray[1][0] = $array[$i][7]
+		$statusArray[1][1] = $textPrintNotificationXray
+
+		$statusArray[2][0] = $array[$i][8]
+		$statusArray[2][1] = $textPrintNotificationTime
+
+		For $x = 0 To UBound($statusArray, $UBOUND_ROWS) - 1
+			If Not $statusArray[$x][0] Or Not $statusArray[$x][1] Then ContinueLoop
+
+			_Excel_RangeCopyPaste($oBook.ActiveSheet, _
+								  $oBook.ActiveSheet.Range("A" & $formatStyle), _
+								  $oBook.ActiveSheet.Range("A" & $currentRow + 3))
 			If @error Then ExcelCopyPasteErrorToLog(@error)
 
-			_Excel_RangeWrite($book, $worksheet, $textPrintNotificationCash, "A" & $currentRow + 3)
+			_Excel_RangeWrite($oBook, $worksheet, $statusArray[$x][1], "A" & $currentRow + 3)
 			If @error Then ExcelWriteErrorToLog(@error)
 
 			$currentRow += 1
-		EndIf
+		Next
 
-		;========= xray ==========
-		If $array[$i][7] Then
-			$xray = True
-			_Excel_RangeCopyPaste($book.ActiveSheet, _
-					$book.ActiveSheet.Range("A" & $formatStyle), _
-					$book.ActiveSheet.Range("A" & $currentRow + 3))
-			If @error Then ExcelCopyPasteErrorToLog(@error)
-
-			_Excel_RangeWrite($book, $worksheet, $textPrintNotificationXray, "A" & $currentRow + 3)
-			If @error Then ExcelWriteErrorToLog(@error)
-
-			$currentRow += 1
-		EndIf
-
-		;========= time ==========
-		If $array[$i][8] Then
-			$outOfTime = True
-			_Excel_RangeCopyPaste($book.ActiveSheet, _
-					$book.ActiveSheet.Range("A" & $formatStyle), _
-					$book.ActiveSheet.Range("A" & $currentRow + 3))
-			If @error Then ExcelCopyPasteErrorToLog(@error)
-
-			_Excel_RangeWrite($book, $worksheet, $textPrintNotificationTime, "A" & $currentRow + 3)
-			If @error Then ExcelWriteErrorToLog(@error)
-
-			$currentRow += 1
-		EndIf
+		If $statusArray[0][0] Then $needToPay = True
+		If $statusArray[1][0] Then $xray = True
+		If $statusArray[2][0] Then $outOfTime = True
 
 		If $i < $maxElement Then
-			_Excel_RangeCopyPaste($book.ActiveSheet, _
-					$book.ActiveSheet.Range("A" & $startRow - 1), _
-					$book.ActiveSheet.Range("A" & $currentRow + 3))
+			_Excel_RangeCopyPaste($oBook.ActiveSheet, _
+					$oBook.ActiveSheet.Range("A" & $startRow - 1), _
+					$oBook.ActiveSheet.Range("A" & $currentRow + 3))
 			If @error Then ExcelCopyPasteErrorToLog(@error)
 
-			_Excel_RangeCopyPaste($book.ActiveSheet, _
-					$book.ActiveSheet.Range("A" & $startRow & ":A" & $startRow + 2), _
-					$book.ActiveSheet.Range("A" & $currentRow + 4))
+			_Excel_RangeCopyPaste($oBook.ActiveSheet, _
+					$oBook.ActiveSheet.Range("A" & $startRow & ":A" & $startRow + 2), _
+					$oBook.ActiveSheet.Range("A" & $currentRow + 4))
 			If @error Then ExcelCopyPasteErrorToLog(@error)
 		EndIf
 
@@ -1164,149 +1195,151 @@ Func PrintAppontments($array, $name, $surname)
 		$finalText &= $textPrintMessageFinalOk
 	EndIf
 
-	_Excel_RangeCopyPaste($book.ActiveSheet, _
-			$book.ActiveSheet.Range("A" & $startRow - 1), _
-			$book.ActiveSheet.Range("A" & $currentRow - 1))
+	_Excel_RangeCopyPaste($oBook.ActiveSheet, _
+			$oBook.ActiveSheet.Range("A" & $startRow - 1), _
+			$oBook.ActiveSheet.Range("A" & $currentRow - 1))
 	If @error Then ExcelCopyPasteErrorToLog(@error)
 
-	_Excel_RangeCopyPaste($book.ActiveSheet, _
-			$book.ActiveSheet.Range("A" & $startRow), _
-			$book.ActiveSheet.Range("A" & $currentRow))
+	_Excel_RangeCopyPaste($oBook.ActiveSheet, _
+			$oBook.ActiveSheet.Range("A" & $startRow), _
+			$oBook.ActiveSheet.Range("A" & $currentRow))
 	If @error Then ExcelCopyPasteErrorToLog(@error)
 
-	_Excel_RangeWrite($book, $worksheet, $finalText, "A" & $currentRow)
+	_Excel_RangeWrite($oBook, $worksheet, $finalText, "A" & $currentRow)
 	If @error Then ExcelWriteErrorToLog(@error)
 
-	_Excel_Print($excel, $book)
+	_Excel_Print($oExcel, $oBook)
 	If @error Then
-		Local $tmp = ""
-		Switch @error
-			Case 1
-				$tmp = "$oExcel is not an object or not an application object"
-			Case 2
-				$tmp = "$vObject is not an object or an invalid A1 range. @error is set to the COM error code"
-			Case 3
-				$tmp = "Error printing the object. @extended is set to the COM error code"
-		EndSwitch
-		ToLog($err & "cannot print workbook: " & $tmp & ", error code: " & @error)
-		Excel_BookClose($book)
-		Excel_Close($excel)
+		Local $tmp = ["$oExcel is not an object or not an application object", _
+					  "$vObject is not an object or an invalid A1 range. @error is set to the COM error code", _
+					  "Error printing the object. @extended is set to the COM error code"]
+		ToLog($errStr & "cannot print workbook: " & $tmp[@error - 1] & ", error code: " & @error)
+		Excel_BookClose($oBook)
 		Return
 	EndIf
 
 	If Not FileExists($printedAppointmentListPath) Then _
 			DirCreate($printedAppointmentListPath)
 
-	_Excel_BookSaveAs($book, $printedAppointmentListPath & $name & " " & $surname & " " & _
+	_Excel_BookSaveAs($oBook, $printedAppointmentListPath & $name & " " & $surname & " " & _
 			@YEAR & @MON & @MDAY & @HOUR & @MIN & @SEC)
 	If @error Then
-		Local $tmp = ""
-		Switch @error
-			Case 1
-				$tmp = "$oWorkbook is not an object"
-			Case 2
-				$tmp = "$iFormat is not a number"
-			Case 3
-				$tmp = "File exists, overwrite flag not set"
-			Case 4
-				$tmp = "File exists but could not be deleted"
-			Case 5
-				$tmp = "Error occurred when saving the workbook. @extended is set to the COM error code returned by the SaveAs method."
-		EndSwitch
-		ToLog($err & "cannot save workbook as: " & $printedAppointmentListPath & ", " & $tmp & ", error code: " & @error)
-		Excel_BookClose($book)
-		Excel_Close($excel)
+		Local $tmp = ["$oWorkbook is not an object", _
+					  "$iFormat is not a number", _
+					  "File exists, overwrite flag not set", _
+					  "File exists but could not be deleted", _
+					  "Error occurred when saving the workbook. @extended is set to the COM error " & _
+					  "code returned by the SaveAs method."]
+		ToLog($errStr & "cannot save workbook as: " & $printedAppointmentListPath & _
+			", " & $tmp[@error - 1] & ", error code: " & @error)
+		Excel_BookClose($oBook)
 		Return
 	EndIf
 
-	Excel_BookClose($book)
-	Excel_Close($excel)
+	Excel_BookClose($oBook)
 
 	Return 1
 EndFunc   ;==>PrintAppontments
 
 
-Func Excel_Close($excel)
-	_Excel_Close($excel, False, True)
+Func Excel_Close()
+	_Excel_Close($oExcel, False, True)
 	If @error Then
-		Local $tmp = ""
-		Switch @error
-			Case 1
-				$tmp = "$oExcel is not an object or not an application object"
-			Case 2
-				$tmp = "Error returned by method Application.Quit. @extended is set to the COM error code"
-			Case 3
-				$tmp = "Error returned by method Application.Save. @extended is set to the COM error code"
-		EndSwitch
-		ToLog("!!! Error - cannot close excel application: " & $tmp & ", error code: " & @error)
+		Local $tmp = ["$oExcel is not an object or not an application object", _
+					  "Error returned by method Application.Quit. @extended is set to the COM error code", _
+					  "Error returned by method Application.Save. @extended is set to the COM error code"]
+		ToLog("!!! Error - cannot close excel application: " & $tmp[@error - 1] & ", error code: " & @error)
 	EndIf
 	If ProcessExists("EXCEL.exe") Then ProcessClose("EXCEL.exe")
 EndFunc   ;==>Excel_Close
 
 
-Func Excel_BookClose($book)
-	_Excel_BookClose($book, False)
+Func Excel_BookClose($oBook)
+	_Excel_BookClose($oBook, False)
 	If @error Then
-		Local $tmp = ""
-		Switch @error
-			Case 1
-				$tmp = "$oWorkbook is not an object or not a workbook object"
-			Case 2
-				$tmp = "Error occurred when saving the workbook. @extended is set to the COM error code returned by the Save method"
-			Case 3
-				$tmp = "Error occurred when closing the workbook. @extended is set to the COM error code returned by the Close method"
-		EndSwitch
-		ToLog("!!! Error - cannot close workbook: " & $tmp & ", error code: " & @error)
+		Local $tmp = ["$oWorkbook is not an object or not a workbook object", _
+					  "Error occurred when saving the workbook. @extended is set to the COM error " & _
+					  "code returned by the Save method", _
+					  "Error occurred when closing the workbook. @extended is set to the COM error code " & _
+					  "returned by the Close method"]
+		ToLog("!!! Error - cannot close workbook: " & $tmp[@error - 1] & ", error code: " & @error)
 	EndIf
 EndFunc   ;==>Excel_BookClose
 
 
 Func ExcelWriteErrorToLog($code)
-	Local $tmp = ""
-	Switch $code
-		Case 1
-			$tmp = "$oWorkbook is not an object or not a workbook object"
-		Case 2
-			$tmp = "$vWorksheet name or index are invalid or $vWorksheet is not a worksheet object. @extended is set to the COM error code"
-		Case 3
-			$tmp = "$vRange is invalid. @extended is set to the COM error code"
-		Case 4
-			$tmp = "Error occurred when writing a single cell. @extended is set to the COM error code"
-		Case 5
-			$tmp = "Error occurred when writing data using the _ArrayTranspose function. @extended is set to the COM error code"
-		Case 6
-			$tmp = "Error occurred when writing data using the transpose method. @extended is set to the COM error code"
-	EndSwitch
-	ToLog("!!! Error - " & $tmp & ", error code: " & $code)
+	Local $tmp = ["$oWorkbook is not an object or not a workbook object", _
+			      "$vWorksheet name or index are invalid or $vWorksheet is not a worksheet object. " & _
+				  "@extended is set to the COM error code", _
+				  "$vRange is invalid. @extended is set to the COM error code", _
+				  "Error occurred when writing a single cell. @extended is set to the COM error code", _
+				  "Error occurred when writing data using the _ArrayTranspose function. @extended is set " & _
+				  "to the COM error code", _
+				  "Error occurred when writing data using the transpose method. @extended is set to " & _
+				  "the COM error code"]
+	ToLog("!!! Error - " & $tmp[$code - 1] & ", error code: " & $code)
 EndFunc   ;==>ExcelWriteErrorToLog
 
 
 Func ExcelCopyPasteErrorToLog($code)
-	Local $tmp = ""
-	Switch $code
-		Case 1
-			$tmp = "$oWorkbook is not an object or not a workbook object"
-		Case 2
-			$tmp = "$vSourceRange is invalid. @extended is set to the COM error code"
-		Case 3
-			$tmp = "$vTargetRange is invalid. @extended is set to the COM error code"
-		Case 4
-			$tmp = "Error occurred when pasting cells. @extended is set to the COM error code"
-		Case 5
-			$tmp = "Error occurred when cutting cells. @extended is set to the COM error code"
-		Case 6
-			$tmp = "Error occurred when copying cells. @extended is set to the COM error code"
-		Case 7
-			$tmp = "$vSourceRange and $vTargetRange can't be set to keyword Default at the same time"
-	EndSwitch
-	ToLog("!!! Error - " & $tmp & ", error code: " & $code)
+	Local $tmp = ["$oWorkbook is not an object or not a workbook object", _
+				  "$vSourceRange is invalid. @extended is set to the COM error code", _
+				  "$vTargetRange is invalid. @extended is set to the COM error code", _
+				  "Error occurred when pasting cells. @extended is set to the COM error code", _
+				  "Error occurred when cutting cells. @extended is set to the COM error code", _
+				  "Error occurred when copying cells. @extended is set to the COM error code", _
+				  "$vSourceRange and $vTargetRange can't be set to keyword Default at the same time"]
+	ToLog("!!! Error - " & $tmp[$code - 1] & ", error code: " & $code)
 EndFunc   ;==>ExcelCopyPasteErrorToLog
 
+
+Func IsPrinterOk()
+	Local $wbemFlagReturnImmediately = 0x10
+	Local $wbemFlagForwardOnly = 0x20
+	Local $colItems = ""
+	Local $strComputer = "localhost"
+
+	Local $nPrinterState = 0
+	Local $bPrinterWorkOffline = False
+
+	Local $objWMIService = ObjGet("winmgmts:\\" & $strComputer & "\root\CIMV2")
+	Local $sQuery = "SELECT * FROM Win32_Printer"
+	Local $colItems = $objWMIService.ExecQuery($sQuery, "WQL", $wbemFlagReturnImmediately + $wbemFlagForwardOnly)
+
+
+	If Not IsObj($colItems) Then Return False
+
+	For $objItem In $colItems
+		If $objItem.Name <> $sPrinterName Then ContinueLoop
+		$nPrinterState = $objItem.PrinterState
+		$bPrinterWorkOffline = $objItem.WorkOffline
+	Next
+
+	If ($nPrinterState = 0 Or $nPrinterState = 131072) And $bPrinterWorkOffline = False Then Return True
+
+	Local $sPrinterStatus = $errStr & @CRLF
+
+	If $bPrinterWorkOffline = True Then _
+		$sPrinterStatus &= "Printer is working offline"
+
+	If $nPrinterState > 0 Then
+		For $i = UBound($aPrinterStatusCodes, $UBOUND_ROWS) - 1 To 1 Step -1
+			If $nPrinterState - $aPrinterStatusCodes[$i][0] < 0 Then ContinueLoop
+			$nPrinterState -= $aPrinterStatusCodes[$i][0]
+			$sPrinterStatus &= @CRLF & $aPrinterStatusCodes[$i][1]
+		Next
+	EndIf
+
+	ToLog($sPrinterStatus)
+	SendEmail($sPrinterStatus)
+
+	Return False
+EndFunc
 
 
 
 Func ExecuteSQL($sql)
-	Local $sqlBD = "DRIVER=Firebird/InterBase(r) driver; UID=sysdba; PWD=masterkey; DBNAME=" & $infoclinicaDB & ";"
+	Local $sqlBD = "DRIVER=Firebird/InterBase(r) driver; UID=; PWD=; DBNAME=" & $infoclinicaDB & ";"
 	Local $adoConnection = ObjCreate("ADODB.Connection")
 	Local $adoRecords = ObjCreate("ADODB.Recordset")
 
@@ -1351,7 +1384,7 @@ EndFunc   ;==>ToLog
 
 
 Func HandleComError()
-	ConsoleWrite("error.description: " & @TAB & $oMyError.description & @CRLF & _
+	ToLog("error.description: " & @TAB & $oMyError.description & @CRLF & _
 			"err.windescription:" & @TAB & $oMyError.windescription & @CRLF & _
 			"err.number is: " & @TAB & Hex($oMyError.number, 8) & @CRLF & _
 			"err.lastdllerror is: " & @TAB & $oMyError.lastdllerror & @CRLF & _
@@ -1363,6 +1396,8 @@ EndFunc   ;==>HandleComError
 
 
 Func OnExit()
+	Excel_Close()
+
 	ToLog("-----Exit code: " & @exitCode & "-----")
 	ToLog("-----Exit method: " & @exitMethod & "-----")
 	Switch @exitMethod
@@ -1378,35 +1413,42 @@ Func OnExit()
 			ToLog("close by Windows shutdown.")
 	EndSwitch
 	ToLog("-----Exiting-----")
-	SendEmail("-----Exiting----- " & @exitMethod)
+
+	Local $sFileName = $logsPath & "Exit_screenshot_" & @YEAR & @MON & @MDAY & "_" & @HOUR & @MIN & @SEC & ".jpg"
+	_ScreenCapture_SetJPGQuality(30)
+	Local $hScreenshot = _ScreenCapture_Capture($sFileName)
+	_WinAPI_DeleteObject($hScreenshot)
+	SendEmail("-----Exiting----- " & @exitMethod, $sFileName)
 EndFunc   ;==>OnExit
 
 
-Func SendEmail($messageToSend)
-	Local $send_email = True
-	Local $current_pc_name = @ComputerName
-	If Not $send_email Then Return
+Func SendEmail($messageToSend, $sAttachments = "")
+	If $bDebug Then Return
+	If Not $sMailSend Then Return
 
+	Local $sCurrentCompName = @ComputerName
 	Local $title = "Infomat notification"
 	$messageToSend &= @CRLF & @CRLF & _
 			"---------------------------------------" & @CRLF & _
 			"This is automatically generated message" & @CRLF & _
-			"Sended from: " & $current_pc_name & @CRLF & _
+			"Sended from: " & $sCurrentCompName & @CRLF & _
 			"Please do not reply"
 
 	ToLog(@CRLF & "-----Sending email-----")
-	Local $login = ""
-	Local $password = ""
-	Local $server = ""
-	Local $from = $current_pc_name
-	Local $to = ""
 
-	_INetSmtpMailCom($server, $from, $login, $to, _
-			$title, $messageToSend, "", "", "", $login, $password)
+	If Not _INetSmtpMailCom($sMailServer, $sCurrentCompName, $sMailLogin, $sMailTo, _
+			$title, $messageToSend, $sAttachments, $sMailDeveloperAddress, "", $sMailLogin, $sMailPassword) Then
+
+			$messageToSend &= @CRLF & @CRLF & $errStr & "Using backed up email settings"
+			_INetSmtpMailCom($sMailBackupServer, $sCurrentCompName, $sMailBackupLogin, $sMailBackupTo, _
+			$title, $messageToSend, $sAttachments, $sMailDeveloperAddress, "", $sMailBackupLogin, $sMailBackupPassword)
+	EndIf
 EndFunc   ;==>SendEmail
 
 
-Func _INetSmtpMailCom($s_SmtpServer, $s_FromName, $s_FromAddress, $s_ToAddress, $s_Subject = "", $as_Body = "", $s_AttachFiles = "", $s_CcAddress = "", $s_BccAddress = "", $s_Username = "", $s_Password = "", $IPPort = 25, $ssl = 0)
+Func _INetSmtpMailCom($s_SmtpServer, $s_FromName, $s_FromAddress, $s_ToAddress, $s_Subject = "", _
+	$as_Body = "", $s_AttachFiles = "", $s_CcAddress = "", $s_BccAddress = "", $s_Username = "", _
+	$s_Password = "", $IPPort = 25, $ssl = 0)
 
 	Local $objEmail = ObjCreate("CDO.Message")
 	Local $i_Error = 0
@@ -1420,53 +1462,42 @@ Func _INetSmtpMailCom($s_SmtpServer, $s_FromName, $s_FromAddress, $s_ToAddress, 
 
 	$objEmail.Subject = $s_Subject
 
+	If $s_AttachFiles <> "" Then
+		Local $S_Files2Attach = StringSplit($s_AttachFiles, ";")
+		For $x = 1 To $S_Files2Attach[0]
+			$S_Files2Attach[$x] = _PathFull($S_Files2Attach[$x])
+			If FileExists($S_Files2Attach[$x]) Then
+				$objEmail.AddAttachment($S_Files2Attach[$x])
+			Else
+				$i_Error_desciption = $i_Error_desciption & @LF & 'File not found to attach: ' & $S_Files2Attach[$x]
+				$as_Body &= $i_Error_desciption & @CRLF
+			EndIf
+		Next
+	EndIf
+
 	If StringInStr($as_Body, "<") And StringInStr($as_Body, ">") Then
 		$objEmail.HTMLBody = $as_Body
 	Else
 		$objEmail.Textbody = $as_Body & @CRLF
 	EndIf
 
-	ProgressSet(50)
-
-;~    ConsoleWrite($s_AttachFiles)
-	If $s_AttachFiles <> "" Then
-		Local $S_Files2Attach = StringSplit($s_AttachFiles, ";")
-;~ 		_ArrayDisplay($S_Files2Attach)
-		For $x = 1 To $S_Files2Attach[0] - 1
-			$S_Files2Attach[$x] = _PathFull($S_Files2Attach[$x])
-			If FileExists($S_Files2Attach[$x]) Then
-				$objEmail.AddAttachment($S_Files2Attach[$x])
-			Else
-				$i_Error_desciption = $i_Error_desciption & @LF & 'File not found to attach: ' & $S_Files2Attach[$x]
-				ConsoleWriteError("file not found")
-				SetError(1)
-				Return 0
-			EndIf
-		Next
-	EndIf
 	$objEmail.Configuration.Fields.Item("http://schemas.microsoft.com/cdo/configuration/sendusing") = 2
 	$objEmail.Configuration.Fields.Item("http://schemas.microsoft.com/cdo/configuration/smtpserver") = $s_SmtpServer
 	$objEmail.Configuration.Fields.Item("http://schemas.microsoft.com/cdo/configuration/smtpserverport") = $IPPort
-	ProgressSet(60)
-	;Authenticated SMTP
+
 	If $s_Username <> "" Then
 		$objEmail.Configuration.Fields.Item("http://schemas.microsoft.com/cdo/configuration/smtpauthenticate") = 1
 		$objEmail.Configuration.Fields.Item("http://schemas.microsoft.com/cdo/configuration/sendusername") = $s_Username
 		$objEmail.Configuration.Fields.Item("http://schemas.microsoft.com/cdo/configuration/sendpassword") = $s_Password
 	EndIf
+
 	If $ssl Then
 		$objEmail.Configuration.Fields.Item("http://schemas.microsoft.com/cdo/configuration/smtpusessl") = True
 	EndIf
-	ProgressSet(70)
-	;Update settings
+
 	$objEmail.Configuration.Fields.Update
-	ProgressSet(80)
-	; Sent the Message
 	$objEmail.Send
-	ProgressSet(90)
-	If @error Then
-		SetError(2)
-		ProgressOff
-		;return $oMyRet[1]
-	EndIf
+
+	If @error Then Return False
+	Return True
 EndFunc   ;==>_INetSmtpMailCom
