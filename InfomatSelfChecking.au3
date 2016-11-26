@@ -4,7 +4,7 @@
 #pragma compile(UPX, true)
 #pragma compile(CompanyName, 'ООО Клиника ЛМС')
 #pragma compile(FileDescription, Приложения для инфомата для самостоятельной отметки о посещении)
-#pragma compile(LegalCopyright, Грашкин Павел Павлович - Нижний Новгород)
+#pragma compile(LegalCopyright, Грашкин Павел Павлович - Нижний Новгород - 31-555)
 #pragma compile(ProductName, InfomatSelfChecking)
 #EndRegion ;**** Directives created by AutoIt3Wrapper_GUI ****
 
@@ -41,7 +41,7 @@ Local $printedAppointmentListPath = $scriptDir & "\Printed Appointments List\"
 Local $logsPath = $scriptDir & "\Logs\"
 
 Local $errStr = "===ERROR=== "
-Local $sMailDeveloperAddress = "nn-admin@bzklinika.ru"
+Local $sMailDeveloperAddress = ""
 Local $iniFile = $resourcesPath & "\InfomatSelfChecking.ini"
 If Not FileExists($iniFile) Then
 	MsgBox($MB_ICONERROR, "Critical error!", "Cannot find the settings file:" & @CRLF & $iniFile & _
@@ -87,10 +87,14 @@ Local $timeBoundariesFuture = IniRead($iniFile, $timeBoundariesSectionName, "fut
 Local $timeBoundariesAcceptableDifferenceBetweenAppointments = IniRead($iniFile, $timeBoundariesSectionName, _
 		"acceptable_difference_between_appointments", 120)
 
-Local $textTitleMain = GetTextFromIni("title_main")
+Local $textTitleDialer = GetTextFromIni("title_dialer")
 Local $textTitleNameConfirm = GetTextFromIni("title_name_confirm")
 Local $textTitleAppointments = GetTextFromIni("title_appointments")
+Local $sTitleWelcome = GetTextFromIni("title_welcome")
 Local $textTitleNotification = GetTextFromIni("title_notification")
+
+Local $sWelcomeTop = GetTextFromIni("welcome_top")
+Local $sWelcomeBottom = GetTextFromIni("welcome_bottom")
 
 Local $textNotificationDbNotAvailable = GetTextFromIni("notification_db_not_available")
 Local $textNotificationNothingFound = GetTextFromIni("notification_nothing_found")
@@ -160,7 +164,7 @@ Local $fontSize = Round($numButSize / 3)
 
 Local $timeLabel = ""
 Local $enteredCode = ""
-If $bDebug Then $enteredCode = ""
+If $bDebug Then $enteredCode = "9601811873"
 
 Local $pressedButtonTimeCounter = 0
 Local $previousButtonPressedID[] = [0, 0]
@@ -213,68 +217,66 @@ If Not $bDebug Then _WinAPI_ShowCursor(False)
 FormShowMessage("", "", False, False, True)
 
 
-Func FormMainGui()
-	Local $mainGui = GUICreate("SelfChecking", $dX, $dY, 0, 0, $WS_POPUP, $WS_EX_TOPMOST)
+Func FormDialer()
+	Local $hDialerGui = GUICreate("FormDialer", $dX, $dY, 0, 0, $WS_POPUP, $WS_EX_TOPMOST)
 
-	CreateStandardDesign($mainGui, $textTitleMain, False, True)
+	CreateStandardDesign($hDialerGui, $textTitleDialer, False, True)
 
 	Local $bt_1 = CreateButton("1", $initX, $initY, $numButSize, $numButSize)
 
 	Local $prevBt
-	$prevBt = ControlGetPos($mainGui, "", $bt_1)
+	$prevBt = ControlGetPos($hDialerGui, "", $bt_1)
 	Local $bt_2 = CreateButton("2", $prevBt[0] + $prevBt[2] + $distBt, $prevBt[1], $numButSize, $numButSize)
 
-	$prevBt = ControlGetPos($mainGui, "", $bt_2)
+	$prevBt = ControlGetPos($hDialerGui, "", $bt_2)
 	Local $bt_3 = CreateButton("3", $prevBt[0] + $prevBt[2] + $distBt, $prevBt[1], $numButSize, $numButSize)
 
-	$prevBt = ControlGetPos($mainGui, "", $bt_1)
+	$prevBt = ControlGetPos($hDialerGui, "", $bt_1)
 	Local $bt_4 = CreateButton("4", $prevBt[0], $prevBt[1] + $prevBt[3] + $distBt, $numButSize, $numButSize)
 
-	$prevBt = ControlGetPos($mainGui, "", $bt_4)
+	$prevBt = ControlGetPos($hDialerGui, "", $bt_4)
 	Local $bt_5 = CreateButton("5", $prevBt[0] + $prevBt[2] + $distBt, $prevBt[1], $numButSize, $numButSize)
 
-	$prevBt = ControlGetPos($mainGui, "", $bt_5)
+	$prevBt = ControlGetPos($hDialerGui, "", $bt_5)
 	Local $bt_6 = CreateButton("6", $prevBt[0] + $prevBt[2] + $distBt, $prevBt[1], $numButSize, $numButSize)
 
-	$prevBt = ControlGetPos($mainGui, "", $bt_4)
+	$prevBt = ControlGetPos($hDialerGui, "", $bt_4)
 	Local $bt_7 = CreateButton("7", $prevBt[0], $prevBt[1] + $prevBt[3] + $distBt, $numButSize, $numButSize)
 
-	$prevBt = ControlGetPos($mainGui, "", $bt_7)
+	$prevBt = ControlGetPos($hDialerGui, "", $bt_7)
 	Local $bt_8 = CreateButton("8", $prevBt[0] + $prevBt[2] + $distBt, $prevBt[1], $numButSize, $numButSize)
 
-	$prevBt = ControlGetPos($mainGui, "", $bt_8)
+	$prevBt = ControlGetPos($hDialerGui, "", $bt_8)
 	Local $bt_9 = CreateButton("9", $prevBt[0] + $prevBt[2] + $distBt, $prevBt[1], $numButSize, $numButSize)
 
-	$prevBt = ControlGetPos($mainGui, "", $bt_7)
+	$prevBt = ControlGetPos($hDialerGui, "", $bt_7)
 	Local $bt_clear = CreateButton("C", $prevBt[0], $prevBt[1] + $prevBt[3] + $distBt, $numButSize, $numButSize)
 
-	$prevBt = ControlGetPos($mainGui, "", $bt_clear)
+	$prevBt = ControlGetPos($hDialerGui, "", $bt_clear)
 	Local $bt_0 = CreateButton("0", $prevBt[0] + $prevBt[2] + $distBt, $prevBt[1], $numButSize, $numButSize)
 
-	$prevBt = ControlGetPos($mainGui, "", $bt_0)
+	$prevBt = ControlGetPos($hDialerGui, "", $bt_0)
 	Local $bt_backspace = CreateButton("<", $prevBt[0] + $prevBt[2] + $distBt, $prevBt[1], $numButSize, $numButSize)
 
-	$prevBt = ControlGetPos($mainGui, "", $bt_clear)
+	$prevBt = ControlGetPos($hDialerGui, "", $bt_clear)
 	$bt_next = CreateButton("Продолжить", $prevBt[0], $prevBt[3] + $distBt + $prevBt[1], _
 			$numButSize * 3 + $distBt * 2, $numButSize, $colorDisabled)
 	GUICtrlSetColor(-1, $colorAlternateText)
 
-	$prevBt = ControlGetPos($mainGui, "", $bt_next)
+	$prevBt = ControlGetPos($hDialerGui, "", $bt_next)
 	If Not IsArray($aNextButtonPosition) Then $aNextButtonPosition = $prevBt
-	Local $prevBt2 = ControlGetPos($mainGui, "", $bt_1)
+	Local $prevBt2 = ControlGetPos($hDialerGui, "", $bt_1)
 	$inp_pincode = GUICtrlCreateLabel($enteredCode, $dX / 2 - $prevBt[2] * 2.3 / 2, _
 			$prevBt2[1] - $prevBt2[3] - $distBt, $prevBt[2] * 2.3, $prevBt[3], BitOR($SS_CENTER, $SS_CENTERIMAGE))
 	GUICtrlSetFont(-1, $fontSize * 1.8)
 	GUICtrlSetColor(-1, $colorText)
 
 	UpdateTimeLabel()
-	UpdateInput($mainGui)
+	UpdateInput($hDialerGui)
 
 	GUISetState(@SW_SHOW)
 
-	ToLog("-----MainGui started-----")
-	SendEmail("-----MainGui started-----")
-
+	ToLog("FormDialer")
 
 	While 1
 		$timer = _Timer_Init()
@@ -282,12 +284,12 @@ Func FormMainGui()
 		$nMsg = GUIGetMsg()
 
 		If $timeCounter > $formMaxTimeWait Then
-			ToLog("MainGui force clear")
+			ToLog("FormDialer force clear")
 			$nMsg = $bt_clear
 			$timeCounter = 0
 			$timer = 0
 			$enteredCode = ""
-			GUIDelete($mainGui)
+			GUIDelete($hDialerGui)
 			Return
 		EndIf
 
@@ -295,34 +297,33 @@ Func FormMainGui()
 			Case $GUI_EVENT_CLOSE
 				Exit
 			Case $bt_0
-				NumPressed(0, $bt_0, $mainGui)
+				NumPressed(0, $bt_0, $hDialerGui)
 			Case $bt_1
-				NumPressed(1, $bt_1, $mainGui)
+				NumPressed(1, $bt_1, $hDialerGui)
 			Case $bt_2
-				NumPressed(2, $bt_2, $mainGui)
+				NumPressed(2, $bt_2, $hDialerGui)
 			Case $bt_3
-				NumPressed(3, $bt_3, $mainGui)
+				NumPressed(3, $bt_3, $hDialerGui)
 			Case $bt_4
-				NumPressed(4, $bt_4, $mainGui)
+				NumPressed(4, $bt_4, $hDialerGui)
 			Case $bt_5
-				NumPressed(5, $bt_5, $mainGui)
+				NumPressed(5, $bt_5, $hDialerGui)
 			Case $bt_6
-				NumPressed(6, $bt_6, $mainGui)
+				NumPressed(6, $bt_6, $hDialerGui)
 			Case $bt_7
-				NumPressed(7, $bt_7, $mainGui)
+				NumPressed(7, $bt_7, $hDialerGui)
 			Case $bt_8
-				NumPressed(8, $bt_8, $mainGui)
+				NumPressed(8, $bt_8, $hDialerGui)
 			Case $bt_9
-				NumPressed(9, $bt_9, $mainGui)
+				NumPressed(9, $bt_9, $hDialerGui)
 
 			Case $bt_next
-				Local $tempTimeLabel = $timeLabel
 				If StringLen($enteredCode) < 10 Then ContinueLoop
-				_Timer_KillAllTimers($mainGui)
+				_Timer_KillAllTimers($hDialerGui)
 				$timeCounter = 0
 				$timer = 0
 
-				FormCheckEnteredNumber($mainGui, $enteredCode)
+				FormCheckEnteredNumber($hDialerGui, $enteredCode)
 
 				$enteredCode = ""
 				Return
@@ -330,13 +331,13 @@ Func FormMainGui()
 				UpdateButtonBackgroundColor($bt_backspace)
 				If StringLen($enteredCode) > 0 Then
 					$enteredCode = StringLeft($enteredCode, StringLen($enteredCode) - 1)
-					UpdateInput($mainGui)
+					UpdateInput($hDialerGui)
 				EndIf
 
 			Case $bt_clear
 				UpdateButtonBackgroundColor($bt_clear)
 				$enteredCode = ""
-				UpdateInput($mainGui)
+				UpdateInput($hDialerGui)
 		EndSwitch
 
 		Sleep(20)
@@ -354,7 +355,7 @@ Func FormMainGui()
 		If $timer Then
 			Local $timeDiff = _Timer_Diff($timer)
 			$timeCounter += $timeDiff
-			_Timer_KillAllTimers($mainGui)
+			_Timer_KillAllTimers($hDialerGui)
 			$timer = 0
 		EndIf
 
@@ -366,7 +367,7 @@ Func FormMainGui()
 			$prevMinute = @MIN
 		EndIf
 	WEnd
-EndFunc   ;==>FormMainGui
+EndFunc   ;==>FormDialer
 
 
 Func FormCheckEnteredNumber($guiToDelete, $code)
@@ -589,7 +590,7 @@ Func FormShowMessage($guiToDelete, $message, $showError = True, $checkDb = False
 
 	Local $nanForm = GUICreate("FormShowMessage", $dX, $dY, 0, 0, $WS_POPUP, $WS_EX_TOPMOST)
 	Local $text = $textTitleNotification
-	If $bMainScreen Then $text = "Уважаемые пациенты!"
+	If $bMainScreen Then $text = $sTitleWelcome
 	CreateStandardDesign($nanForm, $text, $showError, True)
 
 	Local $bt_close = 666
@@ -603,9 +604,12 @@ Func FormShowMessage($guiToDelete, $message, $showError = True, $checkDb = False
 	Local $sizeY = $dY * 0.4
 
 	If $bMainScreen Then
+		ToLog("-----MainGui started-----")
+		SendEmail("-----MainGui started-----")
+
 		$y = $headerHeight
 		$sizeY = $dY * 0.2
-		$message = "Через данный терминал" & @CRLF & "Вы можете отметиться на прием к врачу"
+		$message = $sWelcomeTop
 		CreateLabel($message, $x, $y, $sizeX, $sizeY, $colorText, $GUI_BKCOLOR_TRANSPARENT, $nanForm, $fontSize * 1.2)
 
 		Local $nSmallestSize = $dX < $dY ? $dX : $dY
@@ -622,7 +626,7 @@ Func FormShowMessage($guiToDelete, $message, $showError = True, $checkDb = False
 
 		$y = $dY - $bottonLineHeight - $dY * 0.1
 		$sizeY = $dY * 0.1
-		$message = "Для продолжения коснитесь экрана"
+		$message = $sWelcomeBottom
 	EndIf
 
 	CreateLabel($message, $x + $sizeX * 0.3, $y, $sizeX * 0.4, $sizeY, $colorText, $GUI_BKCOLOR_TRANSPARENT, _
@@ -639,22 +643,19 @@ Func FormShowMessage($guiToDelete, $message, $showError = True, $checkDb = False
 
 	$timeCounter = 0
 
+	Local $nMaxtTimeWait = $formMaxTimeWait
+	If Not $showError And Not StringInStr($message, "регистратуру") Then _
+		$nMaxtTimeWait /= 2
+
 	While 1
 		If Not $checkDb And Not $bMainScreen Then $timer = _Timer_Init()
 
-		$nMsg = GUIGetMsg()
+		$nMsg = GUIGetMsg($GUI_EVENT_ARRAY)
 
-		If $timeCounter > $formMaxTimeWait Then
+		If $timeCounter > $nMaxtTimeWait Then
 			ToLog("FormShowMessage force close" & @CRLF)
-			$nMsg = $bt_close
-		EndIf
-
-
-		If $nMsg = -7 And $bMainScreen Then
-			FormMainGui()
-			_Timer_KillAllTimers($nanForm)
-			$timeCounter = 0
-			$timer = 0
+			$nMsg[0] = $bt_close
+			$nMsg[1] = $nanForm
 		EndIf
 
 		If @MIN <> $prevMinute Then
@@ -662,19 +663,35 @@ Func FormShowMessage($guiToDelete, $message, $showError = True, $checkDb = False
 			$prevMinute = @MIN
 			If $checkDb Then
 				Local $res = GetDatabaseAvailabilityStatus()
-				If $res Then $nMsg = $bt_close
+				If $res Then
+					$nMsg[0] = $bt_close
+					$nMsg[1] = $bt_close
+				EndIf
 			EndIf
 		EndIf
 
-		Switch $nMsg
-			Case $bt_close
-				ToLog("FormShowMessage close" & @CRLF)
-				_Timer_KillAllTimers($nanForm)
-				$timeCounter = 0
-				$timer = 0
-				GUIDelete($nanForm)
-				Return
-		EndSwitch
+		If $nMsg[1] = $nanForm And $nMsg[0] = $bt_close Then
+			ToLog("FormShowMessage close" & @CRLF)
+			_Timer_KillAllTimers($nanForm)
+			$timeCounter = 0
+			$timer = 0
+			GUIDelete($nanForm)
+			Return
+		EndIf
+
+		If $nMsg[1] = $nanForm And _
+			($nMsg[0] = $GUI_EVENT_PRIMARYDOWN OR _
+			$nMsg[0] = $GUI_EVENT_MOUSEMOVE) Then
+			If Not $bMainScreen Then ContinueLoop
+			Local $tempTimeLabel = $timeLabel
+
+			FormDialer()
+
+			$timeLabel = $tempTimeLabel
+			_Timer_KillAllTimers($nanForm)
+			$timeCounter = 0
+			$timer = 0
+		EndIf
 
 		If Not $checkDb And Not $bMainScreen Then
 			Local $timeDiff = _Timer_Diff($timer)
@@ -1390,7 +1407,7 @@ EndFunc
 
 
 Func ExecuteSQL($sql)
-	Local $sqlBD = "DRIVER=Firebird/InterBase(r) driver; UID=sysdba; PWD=masterkey; DBNAME=" & $infoclinicaDB & ";"
+	Local $sqlBD = "DRIVER=Firebird/InterBase(r) driver; UID=; PWD=; DBNAME=" & $infoclinicaDB & ";"
 	Local $adoConnection = ObjCreate("ADODB.Connection")
 	Local $adoRecords = ObjCreate("ADODB.Recordset")
 
