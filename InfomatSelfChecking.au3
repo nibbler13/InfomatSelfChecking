@@ -4,7 +4,7 @@
 #pragma compile(UPX, true)
 #pragma compile(CompanyName, 'ООО Клиника ЛМС')
 #pragma compile(FileDescription, Приложения для инфомата для самостоятельной отметки о посещении)
-#pragma compile(LegalCopyright, Грашкин Павел Павлович - Нижний Новгород - 31-555)
+#pragma compile(LegalCopyright, Грашкин Павел Павлович)
 #pragma compile(ProductName, InfomatSelfChecking)
 #EndRegion ;**** Directives created by AutoIt3Wrapper_GUI ****
 
@@ -41,7 +41,7 @@ Local $printedAppointmentListPath = $scriptDir & "\Printed Appointments List\"
 Local $logsPath = $scriptDir & "\Logs\"
 
 Local $errStr = "===ERROR=== "
-Local $sMailDeveloperAddress = ""
+Local $sMailDeveloperAddress = "nn-admin@bzklinika.ru"
 Local $iniFile = $resourcesPath & "\InfomatSelfChecking.ini"
 If Not FileExists($iniFile) Then
 	MsgBox($MB_ICONERROR, "Critical error!", "Cannot find the settings file:" & @CRLF & $iniFile & _
@@ -151,8 +151,8 @@ Local $sPrinterName = IniRead($iniFile, "printer", "name", "")
 Local $dX = @DesktopWidth
 Local $dY = @DesktopHeight
 If $bDebug Then
-	$dX = 800
-	$dY = 600
+	$dX = 1280
+	$dY = 1024
 EndIf
 
 Local $numButSize = Round($dY / 10)
@@ -164,7 +164,7 @@ Local $fontSize = Round($numButSize / 3)
 
 Local $timeLabel = ""
 Local $enteredCode = ""
-If $bDebug Then $enteredCode = "9601811873"
+If $bDebug Then $enteredCode = ""
 
 Local $pressedButtonTimeCounter = 0
 Local $previousButtonPressedID[] = [0, 0]
@@ -210,15 +210,19 @@ Local $aPrinterStatusCodes[][] = [ _
 	[4194304, "Door open"], _
 	[8388608, "Server unknown"], _
 	[6777216, "Power save"]]
+
+Local Enum  $enRecordsNotFound, $enMarkOk, $enMarkFail, $enMarkOkPrinterOk, $enMarkOkPrinterFail, $enMarkFailPrinterOk, _
+			$enMarkFailPrinterFalil, $enFirstTime, $enMainScreen, $enServiceUnavailable
 #EndRegion ====================== Variables ======================
 
 If Not $bDebug Then _WinAPI_ShowCursor(False)
 
-FormShowMessage("", "", False, False, True)
+;~ FormShowMessage("", "", False, False, True)
+FormShowMessage("", $enMainScreen)
 
 
 Func FormDialer()
-	Local $hDialerGui = GUICreate("FormDialer", $dX, $dY, 0, 0, $WS_POPUP, $WS_EX_TOPMOST)
+	Local $hDialerGui = GUICreate("FormDialer", $dX, $dY, 0, 0, $WS_POPUP, $bDebug ? -1 : $WS_EX_TOPMOST)
 
 	CreateStandardDesign($hDialerGui, $textTitleDialer, False, True)
 
@@ -360,9 +364,6 @@ Func FormDialer()
 		EndIf
 
 		If @MIN <> $prevMinute Then
-			If Not GetDatabaseAvailabilityStatus() Then _
-					FormShowMessage("", $textNotificationDbNotAvailable, True, True)
-
 			UpdateTimeLabel()
 			$prevMinute = @MIN
 		EndIf
@@ -384,27 +385,31 @@ Func FormCheckEnteredNumber($guiToDelete, $code)
 
 	Local $textPhoneNumber = "+7 (" & $phoneNumberPrefix & ") " & StringLeft($phoneNumber, 3) & _
 			"-" & StringMid($phoneNumber, 4, 2) & "-" & StringRight($phoneNumber, 2)
-	Local $errorMessage = ""
-	Local $checkDb = False
+	Local $enumMember = -1
+	Local $sReplacementText = ""
+;~ 	Local $checkDb = False
 
 	If $res = 0 Or UBound($res, $UBOUND_ROWS) > 1 Then
-		$errorMessage = StringReplace($textNotificationNothingFound, "*", $textPhoneNumber)
+;~ 		$errorMessage = StringReplace($textNotificationNothingFound, "*", $textPhoneNumber)
+		$enumMember = $enRecordsNotFound
+		$sReplacementText = $textPhoneNumber
 	ElseIf $res = -1 Then
-		$errorMessage = $textNotificationDbNotAvailable
-		$checkDb = True
+;~ 		$errorMessage = $textNotificationDbNotAvailable
+;~ 		$checkDb = True
+		$enumMember = $enServiceUnavailable
+	ElseIf IsArray($res) And $res[0][4] Then
+		$enumMember = $enFirstTime
+;~ 		FormShowMessage($guiToDelete, $textNotificationFirstVisit, True, $checkDb)
+;~ 		Return
 	EndIf
 
-	If $errorMessage Then
-		FormShowMessage($guiToDelete, $errorMessage, True, $checkDb)
+	If $enumMember > -1 Then
+;~ 		FormShowMessage($guiToDelete, $errorMessage, True, $checkDb)
+		FormShowMessage($guiToDelete, $enumMember, $sReplacementText)
 		Return
 	EndIf
 
-	If $res[0][4] Then
-		FormShowMessage($guiToDelete, $textNotificationFirstVisit, True, $checkDb)
-		Return
-	EndIf
-
-	Local $fioForm = GUICreate("FIO", $dX, $dY, 0, 0, $WS_POPUP, $WS_EX_TOPMOST)
+	Local $fioForm = GUICreate("FIO", $dX, $dY, 0, 0, $WS_POPUP, $bDebug ? -1 : $WS_EX_TOPMOST)
 
 	CreateStandardDesign($fioForm, $textTitleNameConfirm, False)
 
@@ -486,7 +491,7 @@ Func FormShowAppointments($guiToDelete, $patientID, $name, $surname)
 						  _ArrayMax($res, Default, Default, Default, 8)
 
 	If $showAppointmentsForm Then
-		$destForm = GUICreate("FormShowAppointments", $dX, $dY, 0, 0, $WS_POPUP, $WS_EX_TOPMOST)
+		$destForm = GUICreate("FormShowAppointments", $dX, $dY, 0, 0, $WS_POPUP, $bDebug ? -1 : $WS_EX_TOPMOST)
 		CreateStandardDesign($destForm, StringReplace($textTitleAppointments, "*", $fullName), False)
 
 
@@ -525,13 +530,14 @@ Func FormShowAppointments($guiToDelete, $patientID, $name, $surname)
 	EndIf
 
 	Local $needToClose = False
-	Local $textToShow = ""
+	Local $bPrintResult = -1
+;~ 	Local $textToShow = ""
 
-	If $needRegistry Then
-		$textToShow &= $textAppointmentsMarkProblem
-	Else
-		$textToShow &= $textAppointmentsMarkOk
-	EndIf
+;~ 	If $needRegistry Then
+;~ 		$textToShow &= $textAppointmentsMarkProblem
+;~ 	Else
+;~ 		$textToShow &= $textAppointmentsMarkOk
+;~ 	EndIf
 
 	$timeCounter = 0
 
@@ -553,21 +559,41 @@ Func FormShowAppointments($guiToDelete, $patientID, $name, $surname)
 			Case $bt_print
 				Local $printResult = PrintAppontments($res, $name, $surname)
 				If Not $printResult Then
-					$textToShow = $textAppointmentsPrintOk & @CRLF & @CRLF & $textToShow
+;~ 					$textToShow = $textAppointmentsPrintOk & @CRLF & @CRLF & $textToShow
 					$bPrinterError = False
+					$bPrintResult = 1
 				Else
-					$textToShow = $textAppointmentsPrintProblem & @CRLF & @CRLF & $textToShow
+;~ 					$textToShow = $textAppointmentsPrintProblem & @CRLF & @CRLF & $textToShow
 					If Not $bPrinterError Then
 						SendEmail($sMailTitle & @CRLF & "Инфомату не удалось распечатать список назначений пациента " & $patientID & _
 							" " & $name & " " & $surname & @CRLF & $printResult, "", True)
 						$bPrinterError = True
 					EndIf
+					$bPrintResult = 0
 				EndIf
 				$needToClose = True
 		EndSwitch
 
 		If $needToClose Then
-			FormShowMessage($destForm, $textToShow, False)
+			Local $enumMember = -1
+
+			If $needRegistry Then
+				$enumMember = $enMarkFail
+				If $bPrintResult = 1 Then
+					$enumMember = $enMarkFailPrinterOk
+				ElseIf $bPrintResult = 0 Then
+					$enumMember = $enMarkFailPrinterFalil
+				EndIf
+			Else
+				$enumMember = $enMarkOk
+				If $bPrintResult = 1 Then
+					$enumMember = $enMarkOkPrinterOk
+				ElseIf $bPrintResult = 0 Then
+					$enumMember = $enMarkOkPrinterFail
+				EndIf
+			EndIf
+
+			FormShowMessage($destForm, $enumMember)
 			Return
 		EndIf
 
@@ -585,52 +611,170 @@ Func FormShowAppointments($guiToDelete, $patientID, $name, $surname)
 EndFunc   ;==>FormShowAppointments
 
 
-Func FormShowMessage($guiToDelete, $message, $showError = True, $checkDb = False, $bMainScreen = False)
-	ToLog("FormShowMessage: " & StringReplace($message, @CRLF, " | ") & ($bMainScreen ? "mainScreenMessage" : ""))
+Func FormShowMessage($guiToDelete, $enumMember, $sReplacementText = "")
+	Local $sMessageTotal = ""
+	Local $sMessageTop = ""
+	Local $sMessageBottom = ""
+	Local $sImageTopName = ""
+	Local $sImageBottomName = ""
 
-	Local $nanForm = GUICreate("FormShowMessage", $dX, $dY, 0, 0, $WS_POPUP, $WS_EX_TOPMOST)
-	Local $text = $textTitleNotification
-	If $bMainScreen Then $text = $sTitleWelcome
-	CreateStandardDesign($nanForm, $text, $showError, True)
+	Local $showError = False
+	Local $checkDb = False
+	Local $bMainScreen = False
+
+;~ 	$enRecordsNotFound		; error = True		message = $textNotificationNothingFound | $sReplacementText
+;~ 	$enMarkOk 				; error = False
+;~ 	$enMarkFail 			; error = False
+;~ 	$enMarkOkPrinterOk 		; error = False
+;~ 	$enMarkOkPrinterFail	; error = False
+;~ 	$enMarkFailPrinterOk 	; error = False
+;~ 	$enMarkFailPrinterFalil ; error = False
+;~ 	$enFirstTime 			; error = False		$textNotificationFirstVisit
+;~ 	$enMainScreen 			; error = False
+;~ 	$enServiceUnavailable	; error = True		$textNotificationDbNotAvailable
+
+	Switch $enumMember
+		Case $enRecordsNotFound
+			$sMessageTotal = StringReplace($textNotificationNothingFound, "*", $sReplacementText)
+			$showError = True
+			$sImageTopName = "PicNotFound.jpg"
+		Case $enMarkOk
+			$sMessageTotal = $textAppointmentsMarkOk
+			$sImageTopName = "AnimationCheckOk.avi"
+		Case $enMarkFail
+			$sMessageTotal = $textAppointmentsMarkProblem
+			$sImageTopName = "PicRegistry.jpg"
+		Case $enMarkOkPrinterOk
+			$sMessageTotal = $textAppointmentsMarkOk & @CRLF & @CRLF & $textAppointmentsPrintOk
+			$sImageTopName = "AnimationCheckOk.avi"
+		Case $enMarkOkPrinterFail
+			$sMessageTotal = $textAppointmentsMarkOk & @CRLF & @CRLF & $textAppointmentsPrintProblem
+			$sImageTopName = "PicOk.jpg"
+			$sImageBottomName = "PicPrinterError.jpg"
+		Case $enMarkFailPrinterOk
+			$sMessageTotal = $textAppointmentsMarkProblem & @CRLF & @CRLF & $textAppointmentsPrintOk
+			$sImageTopName = "PicRegistry.jpg"
+		Case $enMarkFailPrinterFalil
+			$sMessageTotal = $textAppointmentsMarkProblem & @CRLF & @CRLF & $textAppointmentsPrintProblem
+			$sImageTopName = "PicRegistry.jpg"
+			$sImageBottomName = "PicPrinterError.jpg"
+		Case $enFirstTime
+			$sMessageTotal = $textNotificationFirstVisit
+			$sImageTopName = "PicRegistry.jpg"
+		Case $enMainScreen
+			$sMessageTotal = $sWelcomeTop & @CRLF & @CRLF & $sWelcomeBottom
+			$bMainScreen = True
+			$sImageTopName = "AnimationCheck.avi"
+		Case $enServiceUnavailable
+			$sMessageTotal = $textNotificationDbNotAvailable
+			$showError = True
+			$checkDb = True
+			$sImageTopName = "PicError.jpg"
+		Case Else
+			ToLog("FormShowMessage wrong enum!!!")
+			Return
+	EndSwitch
+
+	ToLog("FormShowMessage: " & StringReplace($sMessageTotal, @CRLF, " | ") & ($bMainScreen ? "mainScreenMessage" : ""))
+
+	Local $iLabelTopWidth = $dX
+	Local $iLabelTopHeight = $headerHeight
+	Local $iLabelTopX = 0
+	Local $iLabelTopY = $headerHeight
+
+	Local $iLabelBottomWidth = $iLabelTopWidth
+	Local $iLabelBottomHeight = $iLabelTopHeight
+	Local $iLabelBottomX = $iLabelTopX
+	Local $iLabelBottomY = 0
+
+	Local $iImageWidth = 0
+	Local $iImageHeight = 0
+	Local $iImageX = 0
+	Local $iImageY = $iLabelTopY + $iLabelTopHeight
+
+	If StringInStr($sMessageTotal, @CRLF & @CRLF) Then
+		Local $aSplited = StringSplit($sMessageTotal, @CRLF & @CRLF, BitOR($STR_NOCOUNT, $STR_ENTIRESPLIT))
+		For $i = 0 To UBound($aSplited) - 2
+			If Not $aSplited[$i] Then ContinueLoop
+			$sMessageTop &= $aSplited[$i]
+			If $i < (UBound($aSplited) - 2) Then $sMessageTop &= @CRLF
+		Next
+		$sMessageBottom = $aSplited[UBound($aSplited) - 1]
+	Else
+		$sMessageTop = $sMessageTotal
+	EndIf
+
+	ToLog("$sMessageTop: " & $sMessageTop)
+	ToLog("$sMessageBottom: " & $sMessageBottom)
+
+	Local $nanForm = GUICreate("FormShowMessage", $dX, $dY, 0, 0, $WS_POPUP, $bDebug ? -1 : $WS_EX_TOPMOST)
+	CreateStandardDesign($nanForm, (($bMainScreen Or $checkDb) ? $sTitleWelcome : $textTitleNotification), $showError, True)
 
 	Local $bt_close = 666
-	If Not $checkDb And Not $bMainScreen Then _
+	If Not $checkDb And Not $bMainScreen Then
 		$bt_close = CreateButton("Закрыть", $aNextButtonPosition[0], $aNextButtonPosition[1], _
-		$aNextButtonPosition[2], $aNextButtonPosition[3])
+			$aNextButtonPosition[2], $aNextButtonPosition[3])
+		Local $aButtonPos = ControlGetPos($nanForm, "", $bt_close)
+		$iLabelBottomY = $aButtonPos[1] - $iLabelBottomHeight
+	Else
+		$iLabelBottomY = $dY - $bottonLineHeight - $iLabelBottomHeight
+	EndIf
 
-	Local $x = 0
-	Local $y = $dY * 0.3
-	Local $sizeX = $dX
-	Local $sizeY = $dY * 0.4
+	If $sImageBottomName Then
+		$iLabelTopX = $dX * 0.3
+		$iLabelTopWidth *= 0.7
+		$iLabelTopHeight = ($iLabelBottomY + $iLabelBottomHeight - $iLabelTopY ) / 2
+
+		$iImageWidth = $dX * 0.2
+		$iImageHeight = $iImageWidth
+		$iImageX = ($dX * 0.3 - $iImageWidth ) / 2
+		$iImageY = ($iLabelTopY + ($iLabelTopHeight - $iImageHeight) / 2)
+
+		$iLabelBottomWidth = $iLabelTopWidth
+		$iLabelBottomHeight = $iLabelTopHeight
+		$iLabelBottomX = $iLabelTopX
+		$iLabelBottomY = $iLabelTopY + $iLabelTopHeight
+	Else
+		$iImageHeight = $iLabelBottomY - $iImageY
+		If Not $sMessageBottom Then _
+			$iImageHeight += $iLabelBottomHeight
+
+		$iImageWidth = $iImageHeight
+		$iImageX = ($dX - $iImageWidth ) / 2
+	EndIf
 
 	If $bMainScreen Then
 		ToLog("-----MainGui started-----")
 		SendEmail("-----MainGui started-----")
-
-		$y = $headerHeight
-		$sizeY = $dY * 0.2
-		$message = $sWelcomeTop
-		CreateLabel($message, $x, $y, $sizeX, $sizeY, $colorText, $GUI_BKCOLOR_TRANSPARENT, $nanForm, $fontSize * 1.2)
-
-		Local $nSmallestSize = $dX < $dY ? $dX : $dY
-		Local $nImageWidth = $nSmallestSize * (410 / 1280)
-		Local $nImageHeight = $nSmallestSize * (410 / 1280)
-		Local $nImageY = $y + $sizeY + (($dY - $bottonLineHeight - $dY * 0.1) - ($y + $sizeY) ) / 2 - $nImageHeight / 2
-;~ 		GUICtrlCreatePic($resourcesPath & "PicMainScreen.jpg", ($dX - $nImageWidth) / 2, $nImageY, _
-;~ 			$nImageWidth, $nImageHeight)
-
-		Local $sFile = $resourcesPath & "AnimationCheck.avi"
-		Local $g_hAVI = _GUICtrlAVI_Create($nanForm, $sFile, -1, ($dX - $nImageWidth) / 2, $nImageY, _
-			$nImageWidth, $nImageHeight, BitOR($ACS_CENTER, $ACS_AUTOPLAY))
-		_GUICtrlAVI_Play($g_hAVI)
-
-		$y = $dY - $bottonLineHeight - $dY * 0.1
-		$sizeY = $dY * 0.1
-		$message = $sWelcomeBottom
 	EndIf
 
-	CreateLabel($message, $x + $sizeX * 0.3, $y, $sizeX * 0.4, $sizeY, $colorText, $GUI_BKCOLOR_TRANSPARENT, _
-		$nanForm, $fontSize * ($bMainScreen ? 1.0 : 1.2))
+	CreateLabel($sMessageTop, $iLabelTopX, $iLabelTopY, $iLabelTopWidth, $iLabelTopHeight, _
+		$colorText, $GUI_BKCOLOR_TRANSPARENT, $nanForm, $sImageBottomName ? $fontSize * 0.8 : $fontSize)
+
+	CreateLabel($sMessageBottom, $iLabelBottomX, $iLabelBottomY, $iLabelBottomWidth, $iLabelBottomHeight, _
+		$colorText, $GUI_BKCOLOR_TRANSPARENT, $nanForm, $fontSize * 0.8)
+
+
+
+	Local $sFile = $resourcesPath & $sImageTopName
+	If StringInStr($sFile, ".jpg") Then
+		GUICtrlCreatePic($sFile, $iImageX, $iImageY, $iImageWidth, $iImageHeight)
+		If $sImageBottomName Then
+			$iImageY = ($iLabelBottomY + ($iLabelBottomHeight - $iImageHeight) / 2)
+			GUICtrlCreatePic($resourcesPath & $sImageBottomName, $iImageX, $iImageY, $iImageWidth, $iImageHeight)
+		EndIf
+	ElseIf StringInStr($sFile, ".avi") Then
+		If $iImageHeight > 410 Then
+			$iImageX += ($iImageWidth - 410) / 2
+			$iImageY += ($iImageWidth - 410) / 2
+			$iImageHeight = 410
+			$iImageWidth = 410
+		EndIf
+
+		Local $g_hAVI = _GUICtrlAVI_Create($nanForm, $sFile, -1, $iImageX, $iImageY, _
+			$iImageWidth, $iImageHeight, BitOR($ACS_CENTER, $ACS_AUTOPLAY))
+		_GUICtrlAVI_Play($g_hAVI, -1, -1, StringInStr($sImageTopName, "Ok.avi") ? 1 : -1)
+	EndIf
 
 	UpdateTimeLabel()
 	GUISetState()
@@ -644,7 +788,7 @@ Func FormShowMessage($guiToDelete, $message, $showError = True, $checkDb = False
 	$timeCounter = 0
 
 	Local $nMaxtTimeWait = $formMaxTimeWait
-	If Not $showError And Not StringInStr($message, "регистратуру") Then _
+	If Not $showError And Not StringInStr($sMessageTop, "регистратуру") Then _
 		$nMaxtTimeWait /= 2
 
 	While 1
@@ -659,6 +803,9 @@ Func FormShowMessage($guiToDelete, $message, $showError = True, $checkDb = False
 		EndIf
 
 		If @MIN <> $prevMinute Then
+			If $bMainScreen And Not GetDatabaseAvailabilityStatus() Then _
+					FormShowMessage("", $enServiceUnavailable) ;$textNotificationDbNotAvailable, True, True)
+
 			UpdateTimeLabel()
 			$prevMinute = @MIN
 			If $checkDb Then
@@ -712,7 +859,28 @@ Func CreateStandardDesign($gui, $titleText, $isError, $trademark = False)
 	Local $titleColor = $colorHeader
 	If $isError Then $titleColor = $colorErrorTitle
 
-	CreateLabel($titleText, 0, 0, $dX, $headerHeight, $colorAlternateText, $titleColor, $gui)
+
+	Local $sTrademarkFileName = "PicButterfly.jpg"
+	Local $trademarkWidth = Round($dX * 0.12)
+	Local $trademarkHeight = Round($trademarkWidth * 1.07)
+
+	Local $headerBackgroundColor = $titleColor
+
+	If $titleText = $sTitleWelcome Then
+		If (@MDAY > 24 And @MON = 12) Or (@MDAY < 10 And @MON = 1) Then
+			$sTrademarkFileName = "PicChristmasTree.jpg"
+			$trademarkWidth = Round($dX * 0.133)
+			$trademarkHeight = Round($trademarkHeight * 1.26)
+			$headerBackgroundColor = $GUI_BKCOLOR_TRANSPARENT
+
+			Local $sHeaderFileName = "PicChristmasHeader.jpg"
+			Local $iHeaderWidth = $dX
+			Local $iHeaderHeight = Round($iHeaderWidth * 0.137)
+			GUICtrlCreatePic($resourcesPath & $sHeaderFileName, 0, 0, $iHeaderWidth, $iHeaderHeight)
+		EndIf
+	EndIf
+
+	CreateLabel($titleText, 0, 0, $dX, $headerHeight, $colorAlternateText, $headerBackgroundColor, $gui)
 
 	Local $timeScopeWidth = $numButSize * 1.7
 	Local $timeIconWidth = 20
@@ -732,12 +900,9 @@ Func CreateStandardDesign($gui, $titleText, $isError, $trademark = False)
 
 	GUICtrlCreatePic($resourcesPath & "PicBottomLine.jpg", 0, $dY - $bottonLineHeight, $dX, $bottonLineHeight)
 
-	If $trademark Then
-		Local $trademarkWidth = Round($dX * 0.12)
-		Local $trademarkHeight = Round($trademarkWidth * 1.07)
-		GUICtrlCreatePic($resourcesPath & "PicButterfly.jpg", $dX - $trademarkWidth - $distBt / 2, _
+	If $trademark Then _
+		GUICtrlCreatePic($resourcesPath & $sTrademarkFileName, $dX - $trademarkWidth - $distBt / 2, _
 				$dY - $trademarkHeight - $bottonLineHeight - $distBt / 2, $trademarkWidth, $trademarkHeight)
-	EndIf
 EndFunc   ;==>CreateStandardDesign
 
 
@@ -1407,7 +1572,7 @@ EndFunc
 
 
 Func ExecuteSQL($sql)
-	Local $sqlBD = "DRIVER=Firebird/InterBase(r) driver; UID=; PWD=; DBNAME=" & $infoclinicaDB & ";"
+	Local $sqlBD = "DRIVER=Firebird/InterBase(r) driver; UID=sysdba; PWD=masterkey; DBNAME=" & $infoclinicaDB & ";"
 	Local $adoConnection = ObjCreate("ADODB.Connection")
 	Local $adoRecords = ObjCreate("ADODB.Recordset")
 
