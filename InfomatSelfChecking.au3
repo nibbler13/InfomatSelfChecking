@@ -1,10 +1,10 @@
 #Region ;**** Directives created by AutoIt3Wrapper_GUI ****
 #AutoIt3Wrapper_Icon=Resources\icon.ico
-#pragma compile(ProductVersion, 1.3)
+#pragma compile(ProductVersion, 1.5)
 #pragma compile(UPX, true)
 #pragma compile(CompanyName, 'ООО Клиника ЛМС')
 #pragma compile(FileDescription, Приложения для инфомата для самостоятельной отметки о посещении)
-#pragma compile(LegalCopyright, Грашкин Павел Павлович)
+#pragma compile(LegalCopyright, )
 #pragma compile(ProductName, InfomatSelfChecking)
 #EndRegion ;**** Directives created by AutoIt3Wrapper_GUI ****
 
@@ -67,6 +67,7 @@ Local $colorOkButton = IniRead($iniFile, $colorSectionName, "button", 0x4e9b44)
 Local $colorOkButtonPressed = IniRead($iniFile, $colorSectionName, "button_pessed", 0x43853a)
 Local $colorMainButton = IniRead($iniFile, $colorSectionName, "main_button", 0xe0e0e0)
 Local $colorMainButtonPressed = IniRead($iniFile, $colorSectionName, "main_button_pressed", 0xd6d6d6)
+Local $colorNameButtonSelected = IniRead($iniFile, $colorSectionName, "name_button_selected", 0x6dcbde)
 Local $colorDisabled = IniRead($iniFile, $colorSectionName, "disabled", 0xdfdfdf)
 Local $colorDisabledText = IniRead($iniFile, $colorSectionName, "disabled_text", 0xa5a5a5)
 Local $colorText = IniRead($iniFile, $colorSectionName, "text", 0x2c3d3f)
@@ -89,6 +90,7 @@ Local $timeBoundariesAcceptableDifferenceBetweenAppointments = IniRead($iniFile,
 
 Local $textTitleDialer = GetTextFromIni("title_dialer")
 Local $textTitleNameConfirm = GetTextFromIni("title_name_confirm")
+Local $textTitleNameConfirmMultiple = GetTextFromIni("title_name_confirm_multiple")
 Local $textTitleAppointments = GetTextFromIni("title_appointments")
 Local $sTitleWelcome = GetTextFromIni("title_welcome")
 Local $textTitleNotification = GetTextFromIni("title_notification")
@@ -101,6 +103,7 @@ Local $textNotificationNothingFound = GetTextFromIni("notification_nothing_found
 Local $textNotificationWrongName = GetTextFromIni("notification_wrong_name")
 Local $textNotificationNoAppointmetnsForNow = GetTextFromIni("notification_no_appointmetns_for_now")
 Local $textNotificationFirstVisit = GetTextFromIni("notification_first_visit")
+Local $textNotificationMultiplePatientsError = GetTextFromIni("notification_need_go_to_registry")
 
 Local $textAppointmentsMarkOk = GetTextFromIni("appointments_mark_ok")
 Local $textAppointmentsMarkProblem = GetTextFromIni("appointments_mark_problem")
@@ -145,6 +148,7 @@ Local $sMailTitle = IniRead($iniFile, $sMailSectionName, "title", "")
 Local $sMailSend = IniRead($iniFile, $sMailSectionName, "send_email", $sMailBackupSend) = 0 ? False : True
 Local $sMailWorkingHoursBegins = IniRead($iniFile, $sMailSectionName, "working_hours_begins", "")
 Local $sMailWorkingHoursEnds = IniRead($iniFile, $sMailSectionName, "working_hours_ends", "")
+Local $sMailRegistryAddress = IniRead($iniFile, $sMailSectionName, "registry", "")
 
 Local $sPrinterName = IniRead($iniFile, "printer", "name", "")
 
@@ -164,7 +168,7 @@ Local $fontSize = Round($numButSize / 3)
 
 Local $timeLabel = ""
 Local $enteredCode = ""
-If $bDebug Then $enteredCode = ""
+If $bDebug Then $enteredCode = "9601811873"
 
 Local $pressedButtonTimeCounter = 0
 Local $previousButtonPressedID[] = [0, 0]
@@ -211,13 +215,21 @@ Local $aPrinterStatusCodes[][] = [ _
 	[8388608, "Server unknown"], _
 	[6777216, "Power save"]]
 
-Local Enum  $enRecordsNotFound, $enMarkOk, $enMarkFail, $enMarkOkPrinterOk, $enMarkOkPrinterFail, $enMarkFailPrinterOk, _
-			$enMarkFailPrinterFalil, $enFirstTime, $enMainScreen, $enServiceUnavailable
+Local Enum  $enRecordsNotFound, _
+			$enMarkOk, _
+			$enMarkFail, _
+			$enMarkOkPrinterOk, _
+			$enMarkOkPrinterFail, _
+			$enMarkFailPrinterOk, _
+			$enMarkFailPrinterFalil, _
+			$enFirstTime, _
+			$enMainScreen, _
+			$enServiceUnavailable, _
+			$enMultiplePatientError
 #EndRegion ====================== Variables ======================
 
 If Not $bDebug Then _WinAPI_ShowCursor(False)
 
-;~ FormShowMessage("", "", False, False, True)
 FormShowMessage("", $enMainScreen)
 
 
@@ -322,7 +334,7 @@ Func FormDialer()
 				NumPressed(9, $bt_9, $hDialerGui)
 
 			Case $bt_next
-				If StringLen($enteredCode) < 10 Then ContinueLoop
+;~ 				If StringLen($enteredCode) < 10 Then ContinueLoop
 				_Timer_KillAllTimers($hDialerGui)
 				$timeCounter = 0
 				$timer = 0
@@ -382,49 +394,101 @@ Func FormCheckEnteredNumber($guiToDelete, $code)
 	$sqlQuery = StringReplace($sqlQuery, "@", "*", 1)
 
 	Local $res = ExecuteSQL($sqlQuery)
+	; res[0][0] - patient card number
+	; res[0][1] - patient name
+	; res[0][2] - patient surname
+	; res[0][3] - patient bdate
+	; res[0][4] - patient first visit mark
+	; res[0][5] - patient family head id
+	; res[0][6] - patient card number
 
 	Local $textPhoneNumber = "+7 (" & $phoneNumberPrefix & ") " & StringLeft($phoneNumber, 3) & _
 			"-" & StringMid($phoneNumber, 4, 2) & "-" & StringRight($phoneNumber, 2)
 	Local $enumMember = -1
 	Local $sReplacementText = ""
-;~ 	Local $checkDb = False
 
-	If $res = 0 Or UBound($res, $UBOUND_ROWS) > 1 Then
-;~ 		$errorMessage = StringReplace($textNotificationNothingFound, "*", $textPhoneNumber)
+	Local $bMultiplePatients = false
+
+	If $res = 0 Then
 		$enumMember = $enRecordsNotFound
 		$sReplacementText = $textPhoneNumber
 	ElseIf $res = -1 Then
-;~ 		$errorMessage = $textNotificationDbNotAvailable
-;~ 		$checkDb = True
 		$enumMember = $enServiceUnavailable
-	ElseIf IsArray($res) And $res[0][4] Then
+	ElseIf IsArray($res) And UBound($res, $UBOUND_ROWS) = 1 And $res[0][4] Then
 		$enumMember = $enFirstTime
-;~ 		FormShowMessage($guiToDelete, $textNotificationFirstVisit, True, $checkDb)
-;~ 		Return
+	ElseIf IsArray($res) And UBound($res, $UBOUND_ROWS) > 1 Then
+		If UBound($res, $UBOUND_ROWS) > 4 Then
+			$enumMember = $enMultiplePatientError
+		Else
+			If Not IsThisOneFamily($res) Then
+				$enumMember = $enMultiplePatientError
+				Local $sMessageToRegistry = "По введенному номеру телефона " & $code & _
+					" обнаружено несколько записей пациентов, у которых нет статуса семьи:" & @CRLF
+
+				For $i = 0 To UBound($res, $UBOUND_ROWS) - 1
+					$sMessageToRegistry &= $res[$i][6] & " " & $res[$i][1] & " " & $res[$i][2] & @CRLF
+				Next
+
+				$sMessageToRegistry &= @CRLF & "Необходимо убедиться в правильности номера телефона" & _
+					" и в случае необходимости объединить в семью."
+
+				SendEmail($sMessageToRegistry, "", False, True)
+			EndIf
+		EndIf
+
+		$bMultiplePatients = True
+	Else
+		$enumMember = $enRecordsNotFound
+		$sReplacementText = $textPhoneNumber
 	EndIf
 
 	If $enumMember > -1 Then
-;~ 		FormShowMessage($guiToDelete, $errorMessage, True, $checkDb)
 		FormShowMessage($guiToDelete, $enumMember, $sReplacementText)
 		Return
 	EndIf
 
 	Local $fioForm = GUICreate("FIO", $dX, $dY, 0, 0, $WS_POPUP, $bDebug ? -1 : $WS_EX_TOPMOST)
 
-	CreateStandardDesign($fioForm, $textTitleNameConfirm, False)
-
-	Local $date = StringMid($res[0][3], 7, 2) & "." & StringMid($res[0][3], 5, 2) & "." & StringLeft($res[0][3], 4)
-	Local $fullName = $res[0][1] & " " & $res[0][2]
-	Local $mainText = $fullName & @CRLF & @CRLF & "Дата рождения: " & $date
-
-	CreateLabel($mainText, 0, $dY * 0.3, $dX, $dY * 0.4, $colorText, $GUI_BKCOLOR_TRANSPARENT, $fioForm, $fontSize * 1.2)
+	CreateStandardDesign($fioForm, $bMultiplePatients ? $textTitleNameConfirmMultiple : $textTitleNameConfirm, False)
 
 	Local $bt_ok = CreateButton("Продолжить", $dX - $distBt - $aNextButtonPosition[2], $aNextButtonPosition[1], _
-		$aNextButtonPosition[2], $aNextButtonPosition[3], $colorOkButton)
-	GUICtrlSetColor(-1, $colorAlternateText)
+			$aNextButtonPosition[2], $aNextButtonPosition[3], $colorOkButton)
+		GUICtrlSetColor(-1, $colorAlternateText)
 
-	Local $bt_not = CreateButton("Неверно", 0 + $distBt, $aNextButtonPosition[1], $aNextButtonPosition[2], _
-		$aNextButtonPosition[3])
+	Local $bt_not = CreateButton($bMultiplePatients ? "Закрыть" : "Неверно", 0 + $distBt, $aNextButtonPosition[1], $aNextButtonPosition[2], _
+			$aNextButtonPosition[3])
+
+	Local $aNameButtons[4][4]
+	; $aNameButtons[0][0] - button id
+	; $aNameButtons[0][1] - button state (selected / not selected)
+	; $aNameButtons[0][2] - button label id
+	; $aNameButtons[0][3] - button is icons present
+
+	If UBound($res, $UBOUND_ROWS) = 1 Then
+		Local $date = GetBDayFromString($res[0][3])
+		Local $fullName = $res[0][1] & " " & $res[0][2]
+		Local $mainText = $fullName & @CRLF & @CRLF & "Дата рождения: " & $date
+		CreateLabel($mainText, 0, $dY * 0.3, $dX, $dY * 0.4, $colorText, $GUI_BKCOLOR_TRANSPARENT, $fioForm, $fontSize * 1.2)
+	Else
+		Local $nButtonsDistanceBetween = $distBt * 1.5
+		Local $nNameButtonTotalHeight = $aNextButtonPosition[3] * UBound($res, $UBOUND_ROWS) + _
+										$nButtonsDistanceBetween * (UBound($res, $UBOUND_ROWS) - 1)
+		Local $nStartY = $headerHeight + ($aNextButtonPosition[1] - $headerHeight - $nNameButtonTotalHeight) / 2
+
+		For $i = 0 To UBound($res, $UBOUND_ROWS) - 1
+			Local $sFullName = $res[$i][1] & " " & $res[$i][2] & @CRLF & "Дата рождения: " & GetBDayFromString($res[$i][3])
+			$aNameButtons[$i][0] = CreateButton("", 0 + $nButtonsDistanceBetween, $nStartY, _
+								$dX - $nButtonsDistanceBetween * 2, $aNextButtonPosition[3])
+			$aNameButtons[$i][1] = False
+			$aNameButtons[$i][2] = CreateLabel($sFullName, 0 + $nButtonsDistanceBetween, $nStartY, _
+								$dX - $nButtonsDistanceBetween * 2, $aNextButtonPosition[3], $colorText, _
+								$GUI_BKCOLOR_TRANSPARENT, $fioForm, $fontSize * 0.9)
+			$nStartY += $aNextButtonPosition[3] + $nButtonsDistanceBetween
+			$aNameButtons[$i][3] = -1
+		Next
+
+		SetButtonEnabled($bt_ok, False)
+	EndIf
 
 	UpdateTimeLabel()
 
@@ -434,6 +498,8 @@ Func FormCheckEnteredNumber($guiToDelete, $code)
 	If $guiToDelete Then GUIDelete($guiToDelete)
 
 	$timeCounter = 0
+
+	Local $nLastSelectedName = 0
 
 	While 1
 		$timer = _Timer_Init()
@@ -445,21 +511,60 @@ Func FormCheckEnteredNumber($guiToDelete, $code)
 		EndIf
 
 		$nMsg = GUIGetMsg()
-		Switch $nMsg
-			Case $bt_not
-				ToLog("Fullname not correct: " & $fullName)
+
+		If $nMsg = $bt_not And Not $bMultiplePatients Then
+				ToLog("FormCheckEnteredNumber close, fullname not correct: " & $fullName)
 				FormShowMessage($fioForm, $textNotificationWrongName)
 				Return
-			Case $bt_ok
-				FormShowAppointments($fioForm, $res[0][0], $res[0][1], $res[0][2])
+		ElseIf $nMsg = $bt_not And $bMultiplePatients Then
+				ToLog("FormCheckEnteredNumber close, multiple patients")
+				GUIDelete($fioForm)
 				Return
-		EndSwitch
+		ElseIf $nMsg = $bt_ok Then
+				Local $result = -1
+
+				If $res[$nLastSelectedName][4] Then
+					$result = $enFirstTime
+					FormShowMessage("", $result)
+				Else
+					$result = FormShowAppointments($bMultiplePatients ? -1 : $fioForm, _
+						$res[$nLastSelectedName][0], _
+						$res[$nLastSelectedName][1], _
+						$res[$nLastSelectedName][2])
+				EndIf
+
+				$timeCounter = 0
+				$timer = 0
+
+				If Not $bMultiplePatients Then Return
+
+				GUISwitch($fioForm)
+				If $aNameButtons[$nLastSelectedName][3] = -1 Then
+					$aNameButtons[$nLastSelectedName][3] = $result
+					SetButtonIcon(ControlGetPos($fioForm, "", $aNameButtons[$nLastSelectedName][0]), $result)
+				EndIf
+
+				UpdateNameButtons($aNameButtons, -1)
+				SetButtonEnabled($bt_ok, False)
+
+		ElseIf $nMsg > 0 Then
+			For $i = 0 To UBound($res, $UBOUND_ROWS) - 1
+				If $nMsg = $aNameButtons[$i][0] Then
+					$timeCounter = 0
+					UpdateNameButtons($aNameButtons, $i)
+					SetButtonEnabled($bt_ok, True)
+					$nLastSelectedName = $i
+				EndIf
+			Next
+		EndIf
 
 		Sleep(20)
 
-		Local $timeDiff = _Timer_Diff($timer)
-		$timeCounter += $timeDiff
-		$timer = 0
+		If $timer <> 0 Then
+			Local $timeDiff = _Timer_Diff($timer)
+			$timeCounter += $timeDiff
+			$timer = 0
+		EndIf
 
 		If @MIN <> $prevMinute Then
 			UpdateTimeLabel()
@@ -531,13 +636,6 @@ Func FormShowAppointments($guiToDelete, $patientID, $name, $surname)
 
 	Local $needToClose = False
 	Local $bPrintResult = -1
-;~ 	Local $textToShow = ""
-
-;~ 	If $needRegistry Then
-;~ 		$textToShow &= $textAppointmentsMarkProblem
-;~ 	Else
-;~ 		$textToShow &= $textAppointmentsMarkOk
-;~ 	EndIf
 
 	$timeCounter = 0
 
@@ -559,11 +657,9 @@ Func FormShowAppointments($guiToDelete, $patientID, $name, $surname)
 			Case $bt_print
 				Local $printResult = PrintAppontments($res, $name, $surname)
 				If Not $printResult Then
-;~ 					$textToShow = $textAppointmentsPrintOk & @CRLF & @CRLF & $textToShow
 					$bPrinterError = False
 					$bPrintResult = 1
 				Else
-;~ 					$textToShow = $textAppointmentsPrintProblem & @CRLF & @CRLF & $textToShow
 					If Not $bPrinterError Then
 						SendEmail($sMailTitle & @CRLF & "Инфомату не удалось распечатать список назначений пациента " & $patientID & _
 							" " & $name & " " & $surname & @CRLF & $printResult, "", True)
@@ -594,7 +690,7 @@ Func FormShowAppointments($guiToDelete, $patientID, $name, $surname)
 			EndIf
 
 			FormShowMessage($destForm, $enumMember)
-			Return
+			Return $enumMember
 		EndIf
 
 		Sleep(20)
@@ -621,17 +717,6 @@ Func FormShowMessage($guiToDelete, $enumMember, $sReplacementText = "")
 	Local $showError = False
 	Local $checkDb = False
 	Local $bMainScreen = False
-
-;~ 	$enRecordsNotFound		; error = True		message = $textNotificationNothingFound | $sReplacementText
-;~ 	$enMarkOk 				; error = False
-;~ 	$enMarkFail 			; error = False
-;~ 	$enMarkOkPrinterOk 		; error = False
-;~ 	$enMarkOkPrinterFail	; error = False
-;~ 	$enMarkFailPrinterOk 	; error = False
-;~ 	$enMarkFailPrinterFalil ; error = False
-;~ 	$enFirstTime 			; error = False		$textNotificationFirstVisit
-;~ 	$enMainScreen 			; error = False
-;~ 	$enServiceUnavailable	; error = True		$textNotificationDbNotAvailable
 
 	Switch $enumMember
 		Case $enRecordsNotFound
@@ -670,12 +755,15 @@ Func FormShowMessage($guiToDelete, $enumMember, $sReplacementText = "")
 			$showError = True
 			$checkDb = True
 			$sImageTopName = "PicError.jpg"
+		Case $enMultiplePatientError
+			$sMessageTotal = $textNotificationMultiplePatientsError
+			$sImageTopName = "PicRegistry.jpg"
 		Case Else
 			ToLog("FormShowMessage wrong enum!!!")
 			Return
 	EndSwitch
 
-	ToLog("FormShowMessage: " & StringReplace($sMessageTotal, @CRLF, " | ") & ($bMainScreen ? "mainScreenMessage" : ""))
+	ToLog("FormShowMessage: " & StringReplace($sMessageTotal, @CRLF, " | ") & ($bMainScreen ? " mainScreenMessage" : ""))
 
 	Local $iLabelTopWidth = $dX
 	Local $iLabelTopHeight = $headerHeight
@@ -703,9 +791,6 @@ Func FormShowMessage($guiToDelete, $enumMember, $sReplacementText = "")
 	Else
 		$sMessageTop = $sMessageTotal
 	EndIf
-
-	ToLog("$sMessageTop: " & $sMessageTop)
-	ToLog("$sMessageBottom: " & $sMessageBottom)
 
 	Local $nanForm = GUICreate("FormShowMessage", $dX, $dY, 0, 0, $WS_POPUP, $bDebug ? -1 : $WS_EX_TOPMOST)
 	CreateStandardDesign($nanForm, (($bMainScreen Or $checkDb) ? $sTitleWelcome : $textTitleNotification), $showError, True)
@@ -812,7 +897,7 @@ Func FormShowMessage($guiToDelete, $enumMember, $sReplacementText = "")
 				Local $res = GetDatabaseAvailabilityStatus()
 				If $res Then
 					$nMsg[0] = $bt_close
-					$nMsg[1] = $bt_close
+					$nMsg[1] = $nanForm
 				EndIf
 			EndIf
 		EndIf
@@ -907,7 +992,9 @@ EndFunc   ;==>CreateStandardDesign
 
 
 Func CreatePngControl($pngPath, $width, $height)
+;~ 	ConsoleWrite("CreatePngControl: " & $pngPath & " w: " & $width & " h: " & $height & @CRLF)
 	Local $newControl = GUICtrlCreatePic("", 0, 0, -1, -1)
+;~ 	ConsoleWrite("$newControl: " & $newControl & @CRLF)
 	_GDIPlus_Startup()
 	Local $hImage = _GDIPlus_ImageLoadFromFile($pngPath)
 	Local $resize = _GDIPlus_ImageResize($hImage, $width, $height)
@@ -936,6 +1023,8 @@ Func CreateLabel($text, $x, $y, $width, $height, $colorText, $backgroundColor, $
 		GUICtrlSetPos($label, $newX, $newY)
 	EndIf
 	GUISetFont($fontSize, $fontWeight, 0, $fontName, $gui, $fontQuality)
+
+	Return $label
 EndFunc   ;==>CreateLabel
 
 
@@ -952,9 +1041,11 @@ Func CreateButton($text, $x, $y, $width, $height, $bkColor = $colorMainButton, $
 
 	GUICtrlCreatePic($resourcesPath & "PicShadow.jpg", $x - $offsetX, $y - $offsetY, $width + $sizeX, $height + $sizeY, $SS_BLACKRECT)
 	GUICtrlSetState(-1, $GUI_DISABLE)
+
 	Local $id = GUICtrlCreateLabel($text, $x, $y, $width, $height, BitOR($SS_CENTER, $SS_CENTERIMAGE, $SS_NOTIFY))
 	GUICtrlSetBkColor(-1, $bkColor)
 	GUICtrlSetColor(-1, $color)
+
 	Return $id
 EndFunc   ;==>CreateButton
 
@@ -1150,6 +1241,112 @@ EndFunc   ;==>CreateAppointmentsTable
 
 
 
+Func IsThisOneFamily($array)
+	If Not IsArray($array) Then Return
+	If UBound($array, $UBOUND_COLUMNS) < 6 Then Return
+
+	Local $bFamily = True
+
+	Local $sPatientWithoutFamilyHead = ""
+	Local $sPatientsFamilyHead = ""
+
+	For $i = 0 To UBound($array, $UBOUND_ROWS) - 1
+		Local $sCurrentFamilyHead = $array[$i][5]
+		If $sCurrentFamilyHead Then
+			If Not $sPatientsFamilyHead Then
+				$sPatientsFamilyHead = $sCurrentFamilyHead
+			Else
+				If $sCurrentFamilyHead <> $sPatientsFamilyHead Then $bFamily = False
+			EndIf
+		Else
+			If Not $sPatientWithoutFamilyHead Then
+				$sPatientWithoutFamilyHead = $array[$i][0]
+			Else
+				$bFamily = False
+			EndIf
+		EndIf
+	Next
+
+	If $sPatientWithoutFamilyHead Then
+		If $sPatientWithoutFamilyHead <> $sPatientsFamilyHead Then $bFamily = False
+	EndIf
+
+	Return $bFamily
+EndFunc
+
+
+
+
+Func SetButtonSelected($idButton, $idLabel, $selected)
+	If Not $idButton Or Not $idLabel Then Return
+	GUICtrlSetBkColor($idButton, $selected ? $colorNameButtonSelected : $colorMainButton)
+	GUICtrlSetColor($idLabel, $selected ? $colorAlternateText : $colorText)
+EndFunc
+
+
+Func SetButtonEnabled($id, $enabled)
+	If Not $id Then Return
+	GUICtrlSetBkColor($id, $enabled ? $colorOkButton : $colorMainButton)
+	GUICtrlSetState($id, $enabled ? $GUI_ENABLE : $GUI_DISABLE)
+EndFunc
+
+
+Func SetButtonIcon($aButtonPos, $enumMember)
+	If Not IsArray($aButtonPos) Then Return
+	If UBound($aButtonPos) < 4 Then Return
+
+	Local $gap = Round($aButtonPos[3] * 0.2)
+
+	Local $width = $aButtonPos[3] - $gap * 2
+	Local $height = $width
+
+	Local $x = $aButtonPos[0] + $aButtonPos[2] - $width - $gap
+	Local $y = $aButtonPos[1] + $gap
+
+	Local $sPicName = ""
+
+	If $enumMember = $enMarkOk Or _
+		$enumMember = $enMarkOkPrinterFail Or _
+		$enumMember = $enMarkOkPrinterOk Then
+		$sPicName = "PicOk.png"
+	ElseIf $enumMember = $enMarkFail Or _
+		$enumMember = $enMarkFailPrinterFalil Or _
+		$enumMember = $enMarkFailPrinterOk Or _
+		$enumMember = $enFirstTime Then
+		$sPicName = "PicRegistry2.png"
+	EndIf
+
+	If $sPicName Then
+		Local $sFullPath = $resourcesPath & $sPicName
+		If Not FileExists($sFullPath) Then Return
+
+		Local $hPng = CreatePngControl($sFullPath, $width, $height)
+		GUICtrlSetPos($hPng, $x, $y)
+	EndIf
+EndFunc
+
+
+Func UpdateNameButtons(ByRef $aButtonsArray, $nSelectedButton, $enumMember = -1)
+	If Not IsArray($aButtonsArray) Then Return
+	If $nSelectedButton > UBound($aButtonsArray, $UBOUND_ROWS) - 1 Then Return
+	If UBound($aButtonsArray, $UBOUND_COLUMNS) < 3 Then Return
+
+	For $i = 0 To UBound($aButtonsArray, $UBOUND_ROWS) - 1
+		If $i <> $nSelectedButton Then
+			If $aButtonsArray[$i][1] Then
+				$aButtonsArray[$i][1] = False
+				SetButtonSelected($aButtonsArray[$i][0], $aButtonsArray[$i][2], False)
+			EndIf
+		Else
+			If Not $aButtonsArray[$i][1] Then
+				$aButtonsArray[$i][1] = True
+				SetButtonSelected($aButtonsArray[$i][0], $aButtonsArray[$i][2], True)
+			EndIf
+		EndIf
+	Next
+EndFunc
+
+
 Func UpdateButtonBackgroundColor($id, $bkColor = $colorMainButton, $glowColor = $colorMainButtonPressed)
 	If $enteredCode Then $timeCounter = 0
 
@@ -1170,11 +1367,9 @@ Func UpdateInput($hGui)
 
 	Local $codeLenght = StringLen($enteredCode)
 	If $codeLenght = 0 Or $codeLenght = 9 Then
-		GUICtrlSetColor($bt_next, $colorDisabledText)
-		GUICtrlSetBkColor($bt_next, $colorDisabled)
+		SetButtonEnabled($bt_next, False)
 	ElseIf $codeLenght = 10 Then
-		GUICtrlSetColor($bt_next, $colorAlternateText)
-		GUICtrlSetBkColor($bt_next, $colorOkButton)
+		SetButtonEnabled($bt_next, True)
 	EndIf
 
 	For $i = 1 To $codeLenght
@@ -1192,6 +1387,13 @@ EndFunc   ;==>UpdateTimeLabel
 
 
 
+
+Func GetBDayFromString($string)
+	Local $sReturn = ""
+	If StringLen($string) >= 8 Then _
+		$sReturn = StringMid($string, 7, 2) & "." & StringMid($string, 5, 2) & "." & StringLeft($string, 4)
+	Return $sReturn
+EndFunc
 
 
 Func GetDatabaseAvailabilityStatus()
@@ -1571,8 +1773,10 @@ EndFunc
 
 
 
+
 Func ExecuteSQL($sql)
-	Local $sqlBD = "DRIVER=Firebird/InterBase(r) driver; UID=sysdba; PWD=masterkey; DBNAME=" & $infoclinicaDB & ";"
+;~ 	ConsoleWrite($sql & @CRLF)
+	Local $sqlBD = "DRIVER=Firebird/InterBase(r) driver; UID=; PWD=; DBNAME=" & $infoclinicaDB & ";"
 	Local $adoConnection = ObjCreate("ADODB.Connection")
 	Local $adoRecords = ObjCreate("ADODB.Recordset")
 
@@ -1589,6 +1793,8 @@ Func ExecuteSQL($sql)
 	Else
 		$adoRecords.Open($sql, $adoConnection)
 		Local $result = $adoRecords.GetRows
+;~ 		ConsoleWrite("array: " & _ArrayToString($result) & @CRLF)
+;~ 		_ArrayDisplay($result)
 		If $adoRecords.EOF = True And $adoRecords.BOF = True Then Return
 	EndIf
 
@@ -1645,16 +1851,14 @@ Func OnExit()
 		Case $EXITCLOSE_BYSUTDOWN
 			ToLog("close by Windows shutdown.")
 	EndSwitch
-
-;~ 	Local $sFileName = $logsPath & "Exit_screenshot_" & @YEAR & @MON & @MDAY & "_" & @HOUR & @MIN & @SEC & ".jpg"
-;~ 	_ScreenCapture_SetJPGQuality(30)
-;~ 	Local $hScreenshot = _ScreenCapture_Capture($sFileName)
-;~ 	_WinAPI_DeleteObject($hScreenshot)
+	
 	SendEmail("-----Exiting----- " & @exitMethod);, $sFileName)
 EndFunc   ;==>OnExit
 
 
-Func SendEmail($messageToSend, $sAttachments = "", $bError = False)
+
+
+Func SendEmail($messageToSend, $sAttachments = "", $bError = False, $bRegistry = False)
 	If $bDebug Then Return
 	If Not $sMailSend Then Return
 
@@ -1667,17 +1871,18 @@ Func SendEmail($messageToSend, $sAttachments = "", $bError = False)
 	ToLog(@CRLF & "-----------------------")
 
 	Local $sCurrentCompName = @ComputerName
-	Local $title = "Infomat notification"
+	Local $title = "Уведомление от инфомата"
 	$messageToSend &= @CRLF & @CRLF & _
 			"---------------------------------------" & @CRLF & _
-			"This is automatically generated message" & @CRLF & _
-			"Sended from: " & $sCurrentCompName & @CRLF & _
-			"Please do not reply"
+			"Это автоматическое сообщение." & @CRLF & _
+			"Пожалуйста, не отвечайте на него." & @CRLF & _
+			"Имя системы: " & $sCurrentCompName
 
-	Local $sMailReciever = $sMailDeveloperAddress
-	If $bError Then $sMailReciever = $sMailTo
+	Local $sMailReceiver = $sMailDeveloperAddress
+	If $bError Then $sMailReceiver = $sMailTo
+	If $bRegistry Then $sMailReceiver = $sMailRegistryAddress
 
-	If Not _INetSmtpMailCom($sMailServer, $sCurrentCompName, $sMailLogin, $sMailReciever, _
+	If Not _INetSmtpMailCom($sMailServer, $sCurrentCompName, $sMailLogin, $sMailReceiver, _
 			$title, $messageToSend, $sAttachments, $sMailDeveloperAddress, "", $sMailLogin, $sMailPassword) Then
 
 			$messageToSend &= @CRLF & @CRLF & $errStr & "Using backed up email settings"
