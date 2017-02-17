@@ -1,6 +1,6 @@
 #Region ;**** Directives created by AutoIt3Wrapper_GUI ****
 #AutoIt3Wrapper_Icon=Resources\icon.ico
-#pragma compile(ProductVersion, 1.5)
+#pragma compile(ProductVersion, 1.5.2)
 #pragma compile(UPX, true)
 #pragma compile(CompanyName, 'ООО Клиника ЛМС')
 #pragma compile(FileDescription, Приложения для инфомата для самостоятельной отметки о посещении)
@@ -41,7 +41,7 @@ Local $printedAppointmentListPath = $scriptDir & "\Printed Appointments List\"
 Local $logsPath = $scriptDir & "\Logs\"
 
 Local $errStr = "===ERROR=== "
-Local $sMailDeveloperAddress = "nn-admin@bzklinika.ru"
+Local $sMailDeveloperAddress = ""
 Local $iniFile = $resourcesPath & "\InfomatSelfChecking.ini"
 If Not FileExists($iniFile) Then
 	MsgBox($MB_ICONERROR, "Critical error!", "Cannot find the settings file:" & @CRLF & $iniFile & _
@@ -225,7 +225,9 @@ Local Enum  $enRecordsNotFound, _
 			$enFirstTime, _
 			$enMainScreen, _
 			$enServiceUnavailable, _
-			$enMultiplePatientError
+			$enMultiplePatientError, _
+			$enNoAppointmentsForNow, _
+			$enWrongName
 #EndRegion ====================== Variables ======================
 
 If Not $bDebug Then _WinAPI_ShowCursor(False)
@@ -400,7 +402,7 @@ Func FormCheckEnteredNumber($guiToDelete, $code)
 	; res[0][3] - patient bdate
 	; res[0][4] - patient first visit mark
 	; res[0][5] - patient family head id
-	; res[0][6] - patient card number
+	; res[0][6] - patient card number=
 
 	Local $textPhoneNumber = "+7 (" & $phoneNumberPrefix & ") " & StringLeft($phoneNumber, 3) & _
 			"-" & StringMid($phoneNumber, 4, 2) & "-" & StringRight($phoneNumber, 2)
@@ -417,29 +419,10 @@ Func FormCheckEnteredNumber($guiToDelete, $code)
 	ElseIf IsArray($res) And UBound($res, $UBOUND_ROWS) = 1 And $res[0][4] Then
 		$enumMember = $enFirstTime
 	ElseIf IsArray($res) And UBound($res, $UBOUND_ROWS) > 1 Then
-		If UBound($res, $UBOUND_ROWS) > 4 Then
+		If UBound($res, $UBOUND_ROWS) > 4 Then _
 			$enumMember = $enMultiplePatientError
-		Else
-			If Not IsThisOneFamily($res) Then
-				$enumMember = $enMultiplePatientError
-				Local $sMessageToRegistry = "По введенному номеру телефона " & $code & _
-					" обнаружено несколько записей пациентов, у которых нет статуса семьи:" & @CRLF
-
-				For $i = 0 To UBound($res, $UBOUND_ROWS) - 1
-					$sMessageToRegistry &= $res[$i][6] & " " & $res[$i][1] & " " & $res[$i][2] & @CRLF
-				Next
-
-				$sMessageToRegistry &= @CRLF & "Необходимо убедиться в правильности номера телефона" & _
-					" и в случае необходимости объединить в семью."
-
-				SendEmail($sMessageToRegistry, "", False, True)
-			EndIf
-		EndIf
 
 		$bMultiplePatients = True
-	Else
-		$enumMember = $enRecordsNotFound
-		$sReplacementText = $textPhoneNumber
 	EndIf
 
 	If $enumMember > -1 Then
@@ -514,7 +497,7 @@ Func FormCheckEnteredNumber($guiToDelete, $code)
 
 		If $nMsg = $bt_not And Not $bMultiplePatients Then
 				ToLog("FormCheckEnteredNumber close, fullname not correct: " & $fullName)
-				FormShowMessage($fioForm, $textNotificationWrongName)
+				FormShowMessage($fioForm, $enWrongName)
 				Return
 		ElseIf $nMsg = $bt_not And $bMultiplePatients Then
 				ToLog("FormCheckEnteredNumber close, multiple patients")
@@ -584,7 +567,7 @@ Func FormShowAppointments($guiToDelete, $patientID, $name, $surname)
 	$res = GetAppointmentsForCurrentTime($res)
 
 	If Not IsArray($res) Or Not UBound($res, $UBOUND_ROWS) Then
-		FormShowMessage($guiToDelete, $textNotificationNoAppointmetnsForNow)
+		FormShowMessage($guiToDelete, $enNoAppointmentsForNow)
 		Return
 	EndIf
 
@@ -708,6 +691,7 @@ EndFunc   ;==>FormShowAppointments
 
 
 Func FormShowMessage($guiToDelete, $enumMember, $sReplacementText = "")
+	ConsoleWrite("---FormShowMessage: " & $enumMember & @CRLF)
 	Local $sMessageTotal = ""
 	Local $sMessageTop = ""
 	Local $sMessageBottom = ""
@@ -720,6 +704,7 @@ Func FormShowMessage($guiToDelete, $enumMember, $sReplacementText = "")
 
 	Switch $enumMember
 		Case $enRecordsNotFound
+			ConsoleWrite("---$enRecordsNotFound" & @CRLF)
 			$sMessageTotal = StringReplace($textNotificationNothingFound, "*", $sReplacementText)
 			$showError = True
 			$sImageTopName = "PicNotFound.jpg"
@@ -757,6 +742,12 @@ Func FormShowMessage($guiToDelete, $enumMember, $sReplacementText = "")
 			$sImageTopName = "PicError.jpg"
 		Case $enMultiplePatientError
 			$sMessageTotal = $textNotificationMultiplePatientsError
+			$sImageTopName = "PicRegistry.jpg"
+		Case $enNoAppointmentsForNow
+			$sMessageTotal = $textNotificationNoAppointmetnsForNow
+			$sImageTopName = "PicRegistry.jpg"
+		Case $enWrongName
+			$sMessageTotal = $textNotificationWrongName
 			$sImageTopName = "PicRegistry.jpg"
 		Case Else
 			ToLog("FormShowMessage wrong enum!!!")
@@ -992,9 +983,7 @@ EndFunc   ;==>CreateStandardDesign
 
 
 Func CreatePngControl($pngPath, $width, $height)
-;~ 	ConsoleWrite("CreatePngControl: " & $pngPath & " w: " & $width & " h: " & $height & @CRLF)
 	Local $newControl = GUICtrlCreatePic("", 0, 0, -1, -1)
-;~ 	ConsoleWrite("$newControl: " & $newControl & @CRLF)
 	_GDIPlus_Startup()
 	Local $hImage = _GDIPlus_ImageLoadFromFile($pngPath)
 	Local $resize = _GDIPlus_ImageResize($hImage, $width, $height)
@@ -1237,42 +1226,6 @@ Func CreateAppointmentsTable($res, $gui)
 		Next
 	EndIf
 EndFunc   ;==>CreateAppointmentsTable
-
-
-
-
-Func IsThisOneFamily($array)
-	If Not IsArray($array) Then Return
-	If UBound($array, $UBOUND_COLUMNS) < 6 Then Return
-
-	Local $bFamily = True
-
-	Local $sPatientWithoutFamilyHead = ""
-	Local $sPatientsFamilyHead = ""
-
-	For $i = 0 To UBound($array, $UBOUND_ROWS) - 1
-		Local $sCurrentFamilyHead = $array[$i][5]
-		If $sCurrentFamilyHead Then
-			If Not $sPatientsFamilyHead Then
-				$sPatientsFamilyHead = $sCurrentFamilyHead
-			Else
-				If $sCurrentFamilyHead <> $sPatientsFamilyHead Then $bFamily = False
-			EndIf
-		Else
-			If Not $sPatientWithoutFamilyHead Then
-				$sPatientWithoutFamilyHead = $array[$i][0]
-			Else
-				$bFamily = False
-			EndIf
-		EndIf
-	Next
-
-	If $sPatientWithoutFamilyHead Then
-		If $sPatientWithoutFamilyHead <> $sPatientsFamilyHead Then $bFamily = False
-	EndIf
-
-	Return $bFamily
-EndFunc
 
 
 
@@ -1776,7 +1729,7 @@ EndFunc
 
 Func ExecuteSQL($sql)
 ;~ 	ConsoleWrite($sql & @CRLF)
-	Local $sqlBD = "DRIVER=Firebird/InterBase(r) driver; UID=; PWD=; DBNAME=" & $infoclinicaDB & ";"
+	Local $sqlBD = "DRIVER=Firebird/InterBase(r) driver; UID=sysdba; PWD=masterkey; DBNAME=" & $infoclinicaDB & ";"
 	Local $adoConnection = ObjCreate("ADODB.Connection")
 	Local $adoRecords = ObjCreate("ADODB.Recordset")
 
@@ -1851,7 +1804,11 @@ Func OnExit()
 		Case $EXITCLOSE_BYSUTDOWN
 			ToLog("close by Windows shutdown.")
 	EndSwitch
-	
+
+;~ 	Local $sFileName = $logsPath & "Exit_screenshot_" & @YEAR & @MON & @MDAY & "_" & @HOUR & @MIN & @SEC & ".jpg"
+;~ 	_ScreenCapture_SetJPGQuality(30)
+;~ 	Local $hScreenshot = _ScreenCapture_Capture($sFileName)
+;~ 	_WinAPI_DeleteObject($hScreenshot)
 	SendEmail("-----Exiting----- " & @exitMethod);, $sFileName)
 EndFunc   ;==>OnExit
 
