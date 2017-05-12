@@ -1,10 +1,10 @@
 #Region ;**** Directives created by AutoIt3Wrapper_GUI ****
 #AutoIt3Wrapper_Icon=Resources\icon.ico
-#pragma compile(ProductVersion, 1.5.2)
+#pragma compile(ProductVersion, 1.7.1)
 #pragma compile(UPX, true)
 #pragma compile(CompanyName, 'ООО Клиника ЛМС')
 #pragma compile(FileDescription, Приложения для инфомата для самостоятельной отметки о посещении)
-#pragma compile(LegalCopyright, )
+#pragma compile(LegalCopyright, Грашкин Павел Павлович - Нижний Новгород - nn-admin)
 #pragma compile(ProductName, InfomatSelfChecking)
 #EndRegion ;**** Directives created by AutoIt3Wrapper_GUI ****
 
@@ -31,18 +31,18 @@
 #include <AutoItConstants.au3>
 #include <ScreenCapture.au3>
 #include <GuiAVI.au3>
+#include <String.au3>
 
 
 
 #Region ====================== Variables ======================
-Local $scriptDir = @ScriptDir
-Local $resourcesPath = $scriptDir & "\Resources\"
-Local $printedAppointmentListPath = $scriptDir & "\Printed Appointments List\"
-Local $logsPath = $scriptDir & "\Logs\"
+Local $sResourcesDirectory = @ScriptDir & "\Resources\"
+Local $sPrintedAppointmentsDirectory = @ScriptDir & "\Printed Appointments List\"
+Local $sLogsDirectory = @ScriptDir & "\Logs\"
 
 Local $errStr = "===ERROR=== "
-Local $sMailDeveloperAddress = ""
-Local $iniFile = $resourcesPath & "\InfomatSelfChecking.ini"
+Local $sMailDeveloperAddress = "nn-admin"
+Local $iniFile = $sResourcesDirectory & "\InfomatSelfChecking.ini"
 If Not FileExists($iniFile) Then
 	MsgBox($MB_ICONERROR, "Critical error!", "Cannot find the settings file:" & @CRLF & $iniFile & _
 			@CRLF & @CRLF & "Please contact to developer: " & @CRLF & "Mail: " & $sMailDeveloperAddress & @CRLF & _
@@ -103,7 +103,7 @@ Local $textNotificationNothingFound = GetTextFromIni("notification_nothing_found
 Local $textNotificationWrongName = GetTextFromIni("notification_wrong_name")
 Local $textNotificationNoAppointmetnsForNow = GetTextFromIni("notification_no_appointmetns_for_now")
 Local $textNotificationFirstVisit = GetTextFromIni("notification_first_visit")
-Local $textNotificationMultiplePatientsError = GetTextFromIni("notification_need_go_to_registry")
+Local $textNotificationNeedToGoToRegistry = GetTextFromIni("notification_need_go_to_registry")
 
 Local $textAppointmentsMarkOk = GetTextFromIni("appointments_mark_ok")
 Local $textAppointmentsMarkProblem = GetTextFromIni("appointments_mark_problem")
@@ -124,6 +124,8 @@ Local $textPrintMessageFinalCash = GetTextFromIni("print_message_final_cash")
 Local $textPrintMessageFinalTime = GetTextFromIni("print_message_final_time")
 Local $textPrintMessageFinalXray = GetTextFromIni("print_message_final_xray")
 Local $textPrintMessageFinalMultiple = GetTextFromIni("print_message_final_multiple")
+Local $textPrintMessageInformationPrivateOffice = GetTextFromIni("print_message_information_private_office")
+Local $textPrintMessageInformationLoyalty = GetTextFromIni("print_message_information_loyalty")
 
 Local $sqlCheckEnteredNumber = "Select Distinct Cl.PCode, Cl.FirstName, Cl.MidName, Cl.BDate, "
 $sqlCheckEnteredNumber &= GetTextFromIni("sql_check_entered_number", True)
@@ -155,8 +157,8 @@ Local $sPrinterName = IniRead($iniFile, "printer", "name", "")
 Local $dX = @DesktopWidth
 Local $dY = @DesktopHeight
 If $bDebug Then
-	$dX = 1280
-	$dY = 1024
+	$dX = 800;1280
+	$dY = 600;1024
 EndIf
 
 Local $numButSize = Round($dY / 10)
@@ -168,7 +170,7 @@ Local $fontSize = Round($numButSize / 3)
 
 Local $timeLabel = ""
 Local $enteredCode = ""
-If $bDebug Then $enteredCode = "9601811873"
+If $bDebug Then $enteredCode = ""
 
 Local $pressedButtonTimeCounter = 0
 Local $previousButtonPressedID[] = [0, 0]
@@ -182,7 +184,7 @@ Local $bt_next = 0
 Local $inp_pincode = 0
 
 Local $bottonLineHeight = 11
-
+Local $bPatientHasPrivateOffice = False
 Local $bPrinterError = False
 
 Local $oExcel = _Excel_Open(False, False, False, False, True)
@@ -225,7 +227,7 @@ Local Enum  $enRecordsNotFound, _
 			$enFirstTime, _
 			$enMainScreen, _
 			$enServiceUnavailable, _
-			$enMultiplePatientError, _
+			$enNeedToGoToRegistry, _
 			$enNoAppointmentsForNow, _
 			$enWrongName
 #EndRegion ====================== Variables ======================
@@ -401,8 +403,8 @@ Func FormCheckEnteredNumber($guiToDelete, $code)
 	; res[0][2] - patient surname
 	; res[0][3] - patient bdate
 	; res[0][4] - patient first visit mark
-	; res[0][5] - patient family head id
-	; res[0][6] - patient card number=
+	; res[0][5] - patient card blocked | 0 - ok, 1 - blocked
+	; res[0][6] - patient private office | 0 - doesn't have, 1 - have
 
 	Local $textPhoneNumber = "+7 (" & $phoneNumberPrefix & ") " & StringLeft($phoneNumber, 3) & _
 			"-" & StringMid($phoneNumber, 4, 2) & "-" & StringRight($phoneNumber, 2)
@@ -417,10 +419,14 @@ Func FormCheckEnteredNumber($guiToDelete, $code)
 	ElseIf $res = -1 Then
 		$enumMember = $enServiceUnavailable
 	ElseIf IsArray($res) And UBound($res, $UBOUND_ROWS) = 1 And $res[0][4] Then
+		ToLog("first visit")
 		$enumMember = $enFirstTime
+	ElseIf IsArray($res) And UBound($res, $UBOUND_ROWS) = 1 And $res[0][5] Then
+		ToLog("card blocked")
+		$enumMember = $enNeedToGoToRegistry
 	ElseIf IsArray($res) And UBound($res, $UBOUND_ROWS) > 1 Then
 		If UBound($res, $UBOUND_ROWS) > 4 Then _
-			$enumMember = $enMultiplePatientError
+			$enumMember = $enNeedToGoToRegistry
 
 		$bMultiplePatients = True
 	EndIf
@@ -496,40 +502,43 @@ Func FormCheckEnteredNumber($guiToDelete, $code)
 		$nMsg = GUIGetMsg()
 
 		If $nMsg = $bt_not And Not $bMultiplePatients Then
-				ToLog("FormCheckEnteredNumber close, fullname not correct: " & $fullName)
-				FormShowMessage($fioForm, $enWrongName)
-				Return
+			ToLog("FormCheckEnteredNumber close, fullname not correct: " & $fullName)
+			FormShowMessage($fioForm, $enWrongName)
+			Return
 		ElseIf $nMsg = $bt_not And $bMultiplePatients Then
-				ToLog("FormCheckEnteredNumber close, multiple patients")
-				GUIDelete($fioForm)
-				Return
+			ToLog("FormCheckEnteredNumber close, multiple patients")
+			GUIDelete($fioForm)
+			Return
 		ElseIf $nMsg = $bt_ok Then
-				Local $result = -1
+			Local $result = -1
 
-				If $res[$nLastSelectedName][4] Then
-					$result = $enFirstTime
-					FormShowMessage("", $result)
-				Else
-					$result = FormShowAppointments($bMultiplePatients ? -1 : $fioForm, _
-						$res[$nLastSelectedName][0], _
-						$res[$nLastSelectedName][1], _
-						$res[$nLastSelectedName][2])
-				EndIf
+			If $res[$nLastSelectedName][4] Then
+				$result = $enFirstTime
+				FormShowMessage("", $result)
+			ElseIf $res[$nLastSelectedName][5] Then
+				$result = $enNeedToGoToRegistry
+				FormShowMessage("", $result)
+			Else
+				$bPatientHasPrivateOffice = $res[$nLastSelectedName][6]
+				$result = FormShowAppointments($bMultiplePatients ? -1 : $fioForm, _
+					$res[$nLastSelectedName][0], _
+					$res[$nLastSelectedName][1], _
+					$res[$nLastSelectedName][2])
+			EndIf
 
-				$timeCounter = 0
-				$timer = 0
+			$timeCounter = 0
+			$timer = 0
 
-				If Not $bMultiplePatients Then Return
+			If Not $bMultiplePatients Then Return
 
-				GUISwitch($fioForm)
-				If $aNameButtons[$nLastSelectedName][3] = -1 Then
-					$aNameButtons[$nLastSelectedName][3] = $result
-					SetButtonIcon(ControlGetPos($fioForm, "", $aNameButtons[$nLastSelectedName][0]), $result)
-				EndIf
+			GUISwitch($fioForm)
+			If $aNameButtons[$nLastSelectedName][3] = -1 Then
+				$aNameButtons[$nLastSelectedName][3] = $result
+				SetButtonIcon(ControlGetPos($fioForm, "", $aNameButtons[$nLastSelectedName][0]), $result)
+			EndIf
 
-				UpdateNameButtons($aNameButtons, -1)
-				SetButtonEnabled($bt_ok, False)
-
+			UpdateNameButtons($aNameButtons, -1)
+			SetButtonEnabled($bt_ok, False)
 		ElseIf $nMsg > 0 Then
 			For $i = 0 To UBound($res, $UBOUND_ROWS) - 1
 				If $nMsg = $aNameButtons[$i][0] Then
@@ -564,12 +573,20 @@ Func FormShowAppointments($guiToDelete, $patientID, $name, $surname)
 	Local $sqlQuery = StringReplace($sqlGetAppointments, "*", $patientID)
 	Local $res = ExecuteSQL($sqlQuery)
 
-	$res = GetAppointmentsForCurrentTime($res)
+	Local $bIsPatientLate = False
+	$res = GetAppointmentsForCurrentTime($res, $bIsPatientLate)
 
 	If Not IsArray($res) Or Not UBound($res, $UBOUND_ROWS) Then
 		FormShowMessage($guiToDelete, $enNoAppointmentsForNow)
 		Return
 	EndIf
+
+	If $bIsPatientLate Then
+		FormShowMessage($guiToDelete, $enNeedToGoToRegistry)
+		Return
+	EndIf
+
+;~ 	_ArrayDisplay($res)
 
 	Local $destForm = 0
 	Local $bt_close = -666
@@ -691,7 +708,7 @@ EndFunc   ;==>FormShowAppointments
 
 
 Func FormShowMessage($guiToDelete, $enumMember, $sReplacementText = "")
-	ConsoleWrite("---FormShowMessage: " & $enumMember & @CRLF)
+;~ 	ConsoleWrite("---FormShowMessage: " & $enumMember & @CRLF)
 	Local $sMessageTotal = ""
 	Local $sMessageTop = ""
 	Local $sMessageBottom = ""
@@ -740,8 +757,8 @@ Func FormShowMessage($guiToDelete, $enumMember, $sReplacementText = "")
 			$showError = True
 			$checkDb = True
 			$sImageTopName = "PicError.jpg"
-		Case $enMultiplePatientError
-			$sMessageTotal = $textNotificationMultiplePatientsError
+		Case $enNeedToGoToRegistry
+			$sMessageTotal = $textNotificationNeedToGoToRegistry
 			$sImageTopName = "PicRegistry.jpg"
 		Case $enNoAppointmentsForNow
 			$sMessageTotal = $textNotificationNoAppointmetnsForNow
@@ -785,6 +802,7 @@ Func FormShowMessage($guiToDelete, $enumMember, $sReplacementText = "")
 
 	Local $nanForm = GUICreate("FormShowMessage", $dX, $dY, 0, 0, $WS_POPUP, $bDebug ? -1 : $WS_EX_TOPMOST)
 	CreateStandardDesign($nanForm, (($bMainScreen Or $checkDb) ? $sTitleWelcome : $textTitleNotification), $showError, True)
+	Local $hMainFormLabelTime = $timeLabel
 
 	Local $bt_close = 666
 	If Not $checkDb And Not $bMainScreen Then
@@ -832,12 +850,12 @@ Func FormShowMessage($guiToDelete, $enumMember, $sReplacementText = "")
 
 
 
-	Local $sFile = $resourcesPath & $sImageTopName
+	Local $sFile = $sResourcesDirectory & $sImageTopName
 	If StringInStr($sFile, ".jpg") Then
 		GUICtrlCreatePic($sFile, $iImageX, $iImageY, $iImageWidth, $iImageHeight)
 		If $sImageBottomName Then
 			$iImageY = ($iLabelBottomY + ($iLabelBottomHeight - $iImageHeight) / 2)
-			GUICtrlCreatePic($resourcesPath & $sImageBottomName, $iImageX, $iImageY, $iImageWidth, $iImageHeight)
+			GUICtrlCreatePic($sResourcesDirectory & $sImageBottomName, $iImageX, $iImageY, $iImageWidth, $iImageHeight)
 		EndIf
 	ElseIf StringInStr($sFile, ".avi") Then
 		If $iImageHeight > 410 Then
@@ -906,11 +924,11 @@ Func FormShowMessage($guiToDelete, $enumMember, $sReplacementText = "")
 			($nMsg[0] = $GUI_EVENT_PRIMARYDOWN OR _
 			$nMsg[0] = $GUI_EVENT_MOUSEMOVE) Then
 			If Not $bMainScreen Then ContinueLoop
-			Local $tempTimeLabel = $timeLabel
 
 			FormDialer()
 
-			$timeLabel = $tempTimeLabel
+			$timeLabel = $hMainFormLabelTime
+			UpdateTimeLabel()
 			_Timer_KillAllTimers($nanForm)
 			$timeCounter = 0
 			$timer = 0
@@ -952,7 +970,7 @@ Func CreateStandardDesign($gui, $titleText, $isError, $trademark = False)
 			Local $sHeaderFileName = "PicChristmasHeader.jpg"
 			Local $iHeaderWidth = $dX
 			Local $iHeaderHeight = Round($iHeaderWidth * 0.137)
-			GUICtrlCreatePic($resourcesPath & $sHeaderFileName, 0, 0, $iHeaderWidth, $iHeaderHeight)
+			GUICtrlCreatePic($sResourcesDirectory & $sHeaderFileName, 0, 0, $iHeaderWidth, $iHeaderHeight)
 		EndIf
 	EndIf
 
@@ -970,14 +988,14 @@ Func CreateStandardDesign($gui, $titleText, $isError, $trademark = False)
 	GUISetFont($fontSize, $fontWeight, 0, $fontName, $gui, $fontQuality)
 
 	$timeLabelPosition = ControlGetPos($gui, "", $timeLabel)
-	Local $timePic = CreatePngControl($resourcesPath & "TimeIcon.png", $timeIconWidth, $timeIconWidth)
+	Local $timePic = CreatePngControl($sResourcesDirectory & "TimeIcon.png", $timeIconWidth, $timeIconWidth)
 	GUICtrlSetPos($timePic, $timeLabelPosition[0] - $distBt / 4 - $timeIconWidth, _
 			$timeLabelPosition[1] + $timeLabelPosition[3] / 2 - $timeIconWidth / 2)
 
-	GUICtrlCreatePic($resourcesPath & "PicBottomLine.jpg", 0, $dY - $bottonLineHeight, $dX, $bottonLineHeight)
+	GUICtrlCreatePic($sResourcesDirectory & "PicBottomLine.jpg", 0, $dY - $bottonLineHeight, $dX, $bottonLineHeight)
 
 	If $trademark Then _
-		GUICtrlCreatePic($resourcesPath & $sTrademarkFileName, $dX - $trademarkWidth - $distBt / 2, _
+		GUICtrlCreatePic($sResourcesDirectory & $sTrademarkFileName, $dX - $trademarkWidth - $distBt / 2, _
 				$dY - $trademarkHeight - $bottonLineHeight - $distBt / 2, $trademarkWidth, $trademarkHeight)
 EndFunc   ;==>CreateStandardDesign
 
@@ -1028,7 +1046,7 @@ Func CreateButton($text, $x, $y, $width, $height, $bkColor = $colorMainButton, $
 		$sizeX = 32
 	EndIf
 
-	GUICtrlCreatePic($resourcesPath & "PicShadow.jpg", $x - $offsetX, $y - $offsetY, $width + $sizeX, $height + $sizeY, $SS_BLACKRECT)
+	GUICtrlCreatePic($sResourcesDirectory & "PicShadow.jpg", $x - $offsetX, $y - $offsetY, $width + $sizeX, $height + $sizeY, $SS_BLACKRECT)
 	GUICtrlSetState(-1, $GUI_DISABLE)
 
 	Local $id = GUICtrlCreateLabel($text, $x, $y, $width, $height, BitOR($SS_CENTER, $SS_CENTERIMAGE, $SS_NOTIFY))
@@ -1133,7 +1151,7 @@ Func CreateAppointmentsTable($res, $gui)
 			For $y = 0 To UBound($iconsArray, $UBOUND_ROWS) - 1
 				If Not $iconsArray[$y][0] Then ContinueLoop
 
-				Local $tmp = CreatePngControl($resourcesPath & $iconsArray[$y][1], $iconWidth, $iconWidth)
+				Local $tmp = CreatePngControl($sResourcesDirectory & $iconsArray[$y][1], $iconWidth, $iconWidth)
 				GUICtrlSetPos(-1, $initialX, $currentY + Round($height * 0.2))
 				$initialX -= $iconWidth * 1.2
 			Next
@@ -1212,7 +1230,7 @@ Func CreateAppointmentsTable($res, $gui)
 		For $i = 0 To $arraySize
 			If Not $labelsArray[$i][0] Then ContinueLoop
 
-			Local $tmp = CreatePngControl($resourcesPath & $labelsArray[$i][1], $iconWidth, $iconWidth)
+			Local $tmp = CreatePngControl($sResourcesDirectory & $labelsArray[$i][1], $iconWidth, $iconWidth)
 			GUICtrlSetPos(-1, $startX, $currentY)
 			$tmp = GUICtrlCreateLabel($labelsArray[$i][2], _
 					$startX + $iconWidth, _
@@ -1265,12 +1283,13 @@ Func SetButtonIcon($aButtonPos, $enumMember)
 	ElseIf $enumMember = $enMarkFail Or _
 		$enumMember = $enMarkFailPrinterFalil Or _
 		$enumMember = $enMarkFailPrinterOk Or _
-		$enumMember = $enFirstTime Then
+		$enumMember = $enFirstTime Or _
+		$enumMember = $enNeedToGoToRegistry Then
 		$sPicName = "PicRegistry2.png"
 	EndIf
 
 	If $sPicName Then
-		Local $sFullPath = $resourcesPath & $sPicName
+		Local $sFullPath = $sResourcesDirectory & $sPicName
 		If Not FileExists($sFullPath) Then Return
 
 		Local $hPng = CreatePngControl($sFullPath, $width, $height)
@@ -1336,6 +1355,8 @@ EndFunc   ;==>UpdateInput
 Func UpdateTimeLabel()
 	Local $newTime = @HOUR & ":" & @MIN
 	GUICtrlSetData($timeLabel, $newTime)
+
+;~ 	ConsoleWrite("Update timeLabel: " & $timeLabel & " : " & $newTime & @CRLF)
 EndFunc   ;==>UpdateTimeLabel
 
 
@@ -1374,55 +1395,64 @@ Func GetFullDate($hour, $minute)
 EndFunc   ;==>GetFullDate
 
 
-Func GetAppointmentsForCurrentTime($array)
-	If Not IsArray($array) Then Return
+Func GetAppointmentsForCurrentTime($aAppointmentsList, ByRef $bIsPatientLate)
+	If Not IsArray($aAppointmentsList) Then Return
 
-	Local $columnsQuantity = UBound($array, $UBOUND_COLUMNS)
-	Local $rowsQuantity = UBound($array, $UBOUND_ROWS) - 1
+;~ 	_ArrayDisplay($aAppointmentsList)
 
-	Local $retArray[0][$columnsQuantity]
-	_ArrayColInsert($array, $columnsQuantity)
+	Local $columnsQuantity = UBound($aAppointmentsList, $UBOUND_COLUMNS)
+	Local $rowsQuantity = UBound($aAppointmentsList, $UBOUND_ROWS) - 1
+	_ArrayColInsert($aAppointmentsList, $columnsQuantity)
 
 	For $i = 0 To $rowsQuantity
-		Local $hour = $array[$i][2]
+		Local $hour = $aAppointmentsList[$i][2]
 		If StringLen($hour) < 2 Then $hour = "0" & $hour
 
-		Local $minute = $array[$i][3]
+		Local $minute = $aAppointmentsList[$i][3]
 		If StringLen($minute) < 2 Then $minute = "0" & $minute
 
 		Local $fullTime = GetFullDate($hour, $minute)
-		$array[$i][$columnsQuantity] = _DateDiff('n', _NowCalc(), $fullTime)
-		$array[$i][2] = $hour & ":" & $minute
+		$aAppointmentsList[$i][$columnsQuantity] = _DateDiff('n', _NowCalc(), $fullTime)
+		$aAppointmentsList[$i][2] = $hour & ":" & $minute
 	Next
 
-	_ArraySort($array, 0, -1, -1, 2)
-	_ArrayColDelete($array, 3)
+;~ 	_ArrayDisplay($aAppointmentsList)
 
+	_ArraySort($aAppointmentsList, 0, -1, -1, 2)
+	_ArrayColDelete($aAppointmentsList, 3)
+
+;~ 	_ArrayDisplay($aAppointmentsList)
+
+	Local $retArray[0][$columnsQuantity]
 	Local $previousAdded = False
 	For $i = 0 To $rowsQuantity
-		Local $currentRow = _ArrayExtract($array, $i, $i)
+		Local $currentRow = _ArrayExtract($aAppointmentsList, $i, $i)
 		Local $timeDiff = $currentRow[0][$columnsQuantity - 1]
 
 		If $timeDiff < $timeBoundariesPast * -1 Then
 			If $currentRow[0][7] Then ContinueLoop
-		ElseIf $timeDiff > $timeBoundariesFuture And _
-				$timeBoundariesFuture <> 0 Then
-			If Not $i Or _
-					Not $previousAdded Or _
-					$timeDiff - $array[$i - 1][$columnsQuantity - 1] > _
-					$timeBoundariesAcceptableDifferenceBetweenAppointments Then _
-					ExitLoop
+		;//////what a fuck?
+		ElseIf $timeDiff > $timeBoundariesFuture And $timeBoundariesFuture <> 0 Then
+			If Not $i Or Not $previousAdded Or _
+				$timeDiff - $aAppointmentsList[$i - 1][$columnsQuantity - 1] > _
+				$timeBoundariesAcceptableDifferenceBetweenAppointments Then _
+				ExitLoop
 		EndIf
 
 		_ArrayAdd($retArray, $currentRow)
 		$previousAdded = True
 	Next
 
+;~ 	_ArrayDisplay($retArray)
+
 	_ArrayColDelete($retArray, 7)
+
+;~ 	_ArrayDisplay($retArray)
 
 	For $i = 0 To UBound($retArray, $UBOUND_ROWS) - 1
 		If $retArray[$i][$columnsQuantity - 2] < $timeBoundariesPast * -1 Then
 			$retArray[$i][$columnsQuantity - 2] = 1
+			$bIsPatientLate = True
 		Else
 			$retArray[$i][$columnsQuantity - 2] = 0
 		EndIf
@@ -1465,8 +1495,8 @@ Func PrintAppontments($array, $name, $surname)
 	Local $startRow = 9
 	Local $worksheet = "Template"
 
-	Local $templatePath = $resourcesPath & "PrintTemplate.xlsx"
-	If Not FileExists($templatePath) Then Return "Template file not exist: " & $resourcesPath & "PrintTemplate.xlsx"
+	Local $templatePath = $sResourcesDirectory & "PrintTemplate.xlsx"
+	If Not FileExists($templatePath) Then Return "Template file not exist: " & $sResourcesDirectory & "PrintTemplate.xlsx"
 
 	If Not IsObj($oExcel) Then $oExcel = _Excel_Open(False, False, False, False, True)
 	If Not IsObj($oExcel) Or @error Then Return "cannot connect to Excel instance, error code: " & @error
@@ -1477,7 +1507,7 @@ Func PrintAppontments($array, $name, $surname)
 					  "Specified $sFilePath does not exist", _
 					  "Unable to open $sFilePath. @extended is set to the COM error code " & _
 					  "returned by the Open method"]
-		Return "cannot open workbook " & $templatePath & ", " & $tmp[@error - 1] & ", error code: " & @error
+		Return "cannot open workbook " & $templatePath & ", " & $tmp[@error] & ", error code: " & @error
 	EndIf
 
 	_Excel_RangeWrite($oBook, $worksheet, $name, "A" & $nameRow)
@@ -1594,6 +1624,48 @@ Func PrintAppontments($array, $name, $surname)
 	_Excel_RangeWrite($oBook, $worksheet, $finalText, "A" & $currentRow)
 	If @error Then ExcelWriteErrorToLog(@error)
 
+;--------------------------------
+;~ 	information part
+;--------------------------------
+
+	Local $sInformationText = $textPrintMessageInformationLoyalty
+
+	If $bPatientHasPrivateOffice = 0 Then
+		Local $nRandom = Random(0, 1, 1)
+		If $nRandom > 0 Then _
+			$sInformationText = $textPrintMessageInformationPrivateOffice
+	EndIf
+
+	If $sInformationText Then
+		$currentRow += 1
+		_Excel_RangeCopyPaste($oBook.ActiveSheet, _
+				$oBook.ActiveSheet.Range("A" & $startRow), _
+				$oBook.ActiveSheet.Range("A" & $currentRow))
+		If @error Then ExcelCopyPasteErrorToLog(@error)
+
+		_Excel_RangeWrite($oBook, $worksheet, _StringRepeat("=", 24), "A" & $currentRow)
+		If @error Then ExcelWriteErrorToLog(@error)
+
+		$currentRow += 1
+		_Excel_RangeCopyPaste($oBook.ActiveSheet, _
+				$oBook.ActiveSheet.Range("A" & $startRow), _
+				$oBook.ActiveSheet.Range("A" & $currentRow))
+		If @error Then ExcelCopyPasteErrorToLog(@error)
+
+		_Excel_RangeWrite($oBook, $worksheet, $sInformationText, "A" & $currentRow)
+		If @error Then ExcelWriteErrorToLog(@error)
+		$oBook.ActiveSheet.Range("A" & $currentRow).Interior.ColorIndex = 35
+
+		$currentRow += 1
+		_Excel_RangeCopyPaste($oBook.ActiveSheet, _
+				$oBook.ActiveSheet.Range("A" & $startRow), _
+				$oBook.ActiveSheet.Range("A" & $currentRow))
+		If @error Then ExcelCopyPasteErrorToLog(@error)
+
+		_Excel_RangeWrite($oBook, $worksheet, _StringRepeat("=", 24), "A" & $currentRow)
+		If @error Then ExcelWriteErrorToLog(@error)
+	EndIf
+
 	_Excel_Print($oExcel, $oBook)
 	If @error Then
 		Local $tmp = ["$oExcel is not an object or not an application object", _
@@ -1603,22 +1675,24 @@ Func PrintAppontments($array, $name, $surname)
 		Return "cannot print workbook: " & $tmp[@error - 1] & ", error code: " & @error
 	EndIf
 
-	If Not FileExists($printedAppointmentListPath) Then DirCreate($printedAppointmentListPath)
+	If $bDebug Then
+		If Not FileExists($sPrintedAppointmentsDirectory) Then DirCreate($sPrintedAppointmentsDirectory)
 
-	_Excel_BookSaveAs($oBook, $printedAppointmentListPath & $name & " " & $surname & " " & _
-			@YEAR & @MON & @MDAY & @HOUR & @MIN & @SEC)
-	If @error Then
-		Local $tmp = ["$oWorkbook is not an object", _
-					  "$iFormat is not a number", _
-					  "File exists, overwrite flag not set", _
-					  "File exists but could not be deleted", _
-					  "Error occurred when saving the workbook. @extended is set to the COM error " & _
-					  "code returned by the SaveAs method."]
+		_Excel_BookSaveAs($oBook, $sPrintedAppointmentsDirectory & $name & " " & $surname & " " & _
+				@YEAR & @MON & @MDAY & @HOUR & @MIN & @SEC)
+		If @error Then
+			Local $tmp = ["$oWorkbook is not an object", _
+						  "$iFormat is not a number", _
+						  "File exists, overwrite flag not set", _
+						  "File exists but could not be deleted", _
+						  "Error occurred when saving the workbook. @extended is set to the COM error " & _
+						  "code returned by the SaveAs method."]
 
-		Excel_BookClose($oBook)
+			Excel_BookClose($oBook)
 
-		Return "cannot save workbook as: " & $printedAppointmentListPath & _
-			", " & $tmp[@error - 1] & ", error code: " & @error
+			Return "cannot save workbook as: " & $sPrintedAppointmentsDirectory & _
+				", " & $tmp[@error - 1] & ", error code: " & @error
+		EndIf
 	EndIf
 
 	Excel_BookClose($oBook)
@@ -1768,7 +1842,7 @@ EndFunc   ;==>NumPressed
 
 
 Func ToLog($message)
-	Local $logFilePath = $logsPath & @ScriptName & "_" & @YEAR & @MON & @MDAY & ".log"
+	Local $logFilePath = $sLogsDirectory & @ScriptName & "_" & @YEAR & @MON & @MDAY & ".log"
 	$message &= @CRLF
 	ConsoleWrite($message)
 	_FileWriteLog($logFilePath, $message)
@@ -1805,7 +1879,7 @@ Func OnExit()
 			ToLog("close by Windows shutdown.")
 	EndSwitch
 
-;~ 	Local $sFileName = $logsPath & "Exit_screenshot_" & @YEAR & @MON & @MDAY & "_" & @HOUR & @MIN & @SEC & ".jpg"
+;~ 	Local $sFileName = $sLogsDirectory & "Exit_screenshot_" & @YEAR & @MON & @MDAY & "_" & @HOUR & @MIN & @SEC & ".jpg"
 ;~ 	_ScreenCapture_SetJPGQuality(30)
 ;~ 	Local $hScreenshot = _ScreenCapture_Capture($sFileName)
 ;~ 	_WinAPI_DeleteObject($hScreenshot)
