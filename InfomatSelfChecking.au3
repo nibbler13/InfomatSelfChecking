@@ -1,10 +1,10 @@
 #Region ;**** Directives created by AutoIt3Wrapper_GUI ****
 #AutoIt3Wrapper_Icon=Resources\icon.ico
-#pragma compile(ProductVersion, 1.7.1)
+#pragma compile(ProductVersion, 1.8)
 #pragma compile(UPX, true)
 #pragma compile(CompanyName, 'ООО Клиника ЛМС')
 #pragma compile(FileDescription, Приложения для инфомата для самостоятельной отметки о посещении)
-#pragma compile(LegalCopyright, Грашкин Павел Павлович - Нижний Новгород - nn-admin)
+#pragma compile(LegalCopyright, Грашкин Павел Павлович - Нижний Новгород - 31-555 - nn-admin@nnkk.budzdorov.su)
 #pragma compile(ProductName, InfomatSelfChecking)
 #EndRegion ;**** Directives created by AutoIt3Wrapper_GUI ****
 
@@ -41,51 +41,67 @@ Local $sPrintedAppointmentsDirectory = @ScriptDir & "\Printed Appointments List\
 Local $sLogsDirectory = @ScriptDir & "\Logs\"
 
 Local $errStr = "===ERROR=== "
-Local $sMailDeveloperAddress = "nn-admin"
-Local $iniFile = $sResourcesDirectory & "\InfomatSelfChecking.ini"
-If Not FileExists($iniFile) Then
-	MsgBox($MB_ICONERROR, "Critical error!", "Cannot find the settings file:" & @CRLF & $iniFile & _
+Local $sMailDeveloperAddress = "nn-admin@bzklinika.ru"
+Local $iniFileSettins = $sResourcesDirectory & "\InfomatSelfChecking.ini"
+If Not FileExists($iniFileSettins) Then
+	MsgBox($MB_ICONERROR, "Critical error!", "Cannot find the settings file:" & @CRLF & $iniFileSettins & _
 			@CRLF & @CRLF & "Please contact to developer: " & @CRLF & "Mail: " & $sMailDeveloperAddress & @CRLF & _
 			"Internal phone number: 31-555")
-	ToLog($errStr & "Cannot find the settings file:" & $iniFile)
+	ToLog($errStr & "Cannot find the settings file:" & $iniFileSettins)
 	Exit
+EndIf
+
+Local $iniFileAdvertisement = $sResourcesDirectory & "\Advertisement.ini"
+Local $aAdvertisement[0][4]
+If FileExists($iniFileAdvertisement) Then
+	Local $aSectionNames = IniReadSectionNames($iniFileAdvertisement)
+	If Not @error And UBound($aSectionNames, $UBOUND_ROWS) > 0 Then
+		For $i = 1 To UBound($aSectionNames) - 1
+			Local $aRow[1][4]
+			$aRow[0][0] = IniRead($iniFileAdvertisement, $aSectionNames[$i], "datebeggining", "")
+			$aRow[0][1] = IniRead($iniFileAdvertisement, $aSectionNames[$i], "dateexpiration", "")
+			$aRow[0][2] = IniRead($iniFileAdvertisement, $aSectionNames[$i], "text", "")
+			$aRow[0][3] = $aSectionNames[$i]
+			_ArrayConcatenate($aAdvertisement, $aRow)
+		Next
+	EndIf
 EndIf
 
 Local $oMyError = ObjEvent("AutoIt.Error", "HandleComError")
 OnAutoItExitRegister("OnExit")
 
 Local $generalSectionName = "general"
-Local $infoclinicaDB = IniRead($iniFile, $generalSectionName, "infoclinica_database_address", "")
-Local $formMaxTimeWait = IniRead($iniFile, $generalSectionName, "form_max_time_wait_in_seconds", 30) * 1000
-Local $showAppointmentsForm = IniRead($iniFile, $generalSectionName, "show_appointments_form", 0) = 0 ? False : True
-Local $showIconsDescription = IniRead($iniFile, $generalSectionName, "show_icons_description", 0) = 0 ? False : True
-Local $bDebug = IniRead($iniFile, $generalSectionName, "debug", 0) = 0 ? False : True
+Local $infoclinicaDB = IniRead($iniFileSettins, $generalSectionName, "infoclinica_database_address", "")
+Local $formMaxTimeWait = IniRead($iniFileSettins, $generalSectionName, "form_max_time_wait_in_seconds", 30) * 1000
+Local $showAppointmentsForm = IniRead($iniFileSettins, $generalSectionName, "show_appointments_form", 0) = 0 ? False : True
+Local $showIconsDescription = IniRead($iniFileSettins, $generalSectionName, "show_icons_description", 0) = 0 ? False : True
+Local $bDebug = IniRead($iniFileSettins, $generalSectionName, "debug", 0) = 0 ? False : True
 
 Local $colorSectionName = "colors"
-Local $colorHeader = IniRead($iniFile, $colorSectionName, "header", 0x4e9b44)
-Local $colorOkButton = IniRead($iniFile, $colorSectionName, "button", 0x4e9b44)
-Local $colorOkButtonPressed = IniRead($iniFile, $colorSectionName, "button_pessed", 0x43853a)
-Local $colorMainButton = IniRead($iniFile, $colorSectionName, "main_button", 0xe0e0e0)
-Local $colorMainButtonPressed = IniRead($iniFile, $colorSectionName, "main_button_pressed", 0xd6d6d6)
-Local $colorNameButtonSelected = IniRead($iniFile, $colorSectionName, "name_button_selected", 0x6dcbde)
-Local $colorDisabled = IniRead($iniFile, $colorSectionName, "disabled", 0xdfdfdf)
-Local $colorDisabledText = IniRead($iniFile, $colorSectionName, "disabled_text", 0xa5a5a5)
-Local $colorText = IniRead($iniFile, $colorSectionName, "text", 0x2c3d3f)
-Local $colorAlternateText = IniRead($iniFile, $colorSectionName, "alternate_text", 0xffffff)
-Local $colorMainBackground = IniRead($iniFile, $colorSectionName, "main_background", 0xffffff)
-Local $colorErrorTitle = IniRead($iniFile, $colorSectionName, "error_title", 0xf98d3c)
+Local $colorHeader = IniRead($iniFileSettins, $colorSectionName, "header", 0x4e9b44)
+Local $colorOkButton = IniRead($iniFileSettins, $colorSectionName, "button", 0x4e9b44)
+Local $colorOkButtonPressed = IniRead($iniFileSettins, $colorSectionName, "button_pessed", 0x43853a)
+Local $colorMainButton = IniRead($iniFileSettins, $colorSectionName, "main_button", 0xe0e0e0)
+Local $colorMainButtonPressed = IniRead($iniFileSettins, $colorSectionName, "main_button_pressed", 0xd6d6d6)
+Local $colorNameButtonSelected = IniRead($iniFileSettins, $colorSectionName, "name_button_selected", 0x6dcbde)
+Local $colorDisabled = IniRead($iniFileSettins, $colorSectionName, "disabled", 0xdfdfdf)
+Local $colorDisabledText = IniRead($iniFileSettins, $colorSectionName, "disabled_text", 0xa5a5a5)
+Local $colorText = IniRead($iniFileSettins, $colorSectionName, "text", 0x2c3d3f)
+Local $colorAlternateText = IniRead($iniFileSettins, $colorSectionName, "alternate_text", 0xffffff)
+Local $colorMainBackground = IniRead($iniFileSettins, $colorSectionName, "main_background", 0xffffff)
+Local $colorErrorTitle = IniRead($iniFileSettins, $colorSectionName, "error_title", 0xf98d3c)
 
 Local $fontSectionName = "font"
-Local $fontName = IniRead($iniFile, $fontSectionName, "main_font_name", "Franklin Gothic")
-Local $fontWeight = IniRead($iniFile, $fontSectionName, "main_font_weight", $FW_BOLD)
-Local $fontQuality = IniRead($iniFile, $fontSectionName, "quality", $CLEARTYPE_QUALITY)
-Local $fontNameAppointments = IniRead($iniFile, $fontSectionName, "appointments_font_name", "Franklin Gothic Book")
-Local $fontWeightAppointments = IniRead($iniFile, $fontSectionName, "appointments_font_weight", $FW_NORMAL)
+Local $fontName = IniRead($iniFileSettins, $fontSectionName, "main_font_name", "Franklin Gothic")
+Local $fontWeight = IniRead($iniFileSettins, $fontSectionName, "main_font_weight", $FW_BOLD)
+Local $fontQuality = IniRead($iniFileSettins, $fontSectionName, "quality", $CLEARTYPE_QUALITY)
+Local $fontNameAppointments = IniRead($iniFileSettins, $fontSectionName, "appointments_font_name", "Franklin Gothic Book")
+Local $fontWeightAppointments = IniRead($iniFileSettins, $fontSectionName, "appointments_font_weight", $FW_NORMAL)
 
 Local $timeBoundariesSectionName = "available_time_to_set_mark_in_minutes"
-Local $timeBoundariesPast = IniRead($iniFile, $timeBoundariesSectionName, "past", 10)
-Local $timeBoundariesFuture = IniRead($iniFile, $timeBoundariesSectionName, "future", 180)
-Local $timeBoundariesAcceptableDifferenceBetweenAppointments = IniRead($iniFile, $timeBoundariesSectionName, _
+Local $timeBoundariesPast = IniRead($iniFileSettins, $timeBoundariesSectionName, "past", 10)
+Local $timeBoundariesFuture = IniRead($iniFileSettins, $timeBoundariesSectionName, "future", 180)
+Local $timeBoundariesAcceptableDifferenceBetweenAppointments = IniRead($iniFileSettins, $timeBoundariesSectionName, _
 		"acceptable_difference_between_appointments", 120)
 
 Local $textTitleDialer = GetTextFromIni("title_dialer")
@@ -137,28 +153,28 @@ Local $sqlSetMark = "Update Schedule Set ScreenVisit = 1, ClVisit = 1, VisitTime
 $sqlSetMark &= GetTextFromIni("sql_set_mark", True)
 
 Local $sMailSectionName = "mail"
-Local $sMailBackupServer = ""
-Local $sMailBackupLogin = ""
-Local $sMailBackupPassword = ""
+Local $sMailBackupServer = "smtp.budzdorov.ru"
+Local $sMailBackupLogin = "infomat_notification@nnkk.budzdorov.su"
+Local $sMailBackupPassword = "fnpxmagr"
 Local $sMailBackupTo = $sMailDeveloperAddress
 Local $sMailBackupSend = True
-Local $sMailServer = IniRead($iniFile, $sMailSectionName, "server", $sMailBackupServer)
-Local $sMailLogin = IniRead($iniFile, $sMailSectionName, "login", $sMailBackupLogin)
-Local $sMailPassword = IniRead($iniFile, $sMailSectionName, "password", $sMailBackupPassword)
-Local $sMailTo = IniRead($iniFile, $sMailSectionName, "to", $sMailBackupTo)
-Local $sMailTitle = IniRead($iniFile, $sMailSectionName, "title", "")
-Local $sMailSend = IniRead($iniFile, $sMailSectionName, "send_email", $sMailBackupSend) = 0 ? False : True
-Local $sMailWorkingHoursBegins = IniRead($iniFile, $sMailSectionName, "working_hours_begins", "")
-Local $sMailWorkingHoursEnds = IniRead($iniFile, $sMailSectionName, "working_hours_ends", "")
-Local $sMailRegistryAddress = IniRead($iniFile, $sMailSectionName, "registry", "")
+Local $sMailServer = IniRead($iniFileSettins, $sMailSectionName, "server", $sMailBackupServer)
+Local $sMailLogin = IniRead($iniFileSettins, $sMailSectionName, "login", $sMailBackupLogin)
+Local $sMailPassword = IniRead($iniFileSettins, $sMailSectionName, "password", $sMailBackupPassword)
+Local $sMailTo = IniRead($iniFileSettins, $sMailSectionName, "to", $sMailBackupTo)
+Local $sMailTitle = IniRead($iniFileSettins, $sMailSectionName, "title", "")
+Local $sMailSend = IniRead($iniFileSettins, $sMailSectionName, "send_email", $sMailBackupSend) = 0 ? False : True
+Local $sMailWorkingHoursBegins = IniRead($iniFileSettins, $sMailSectionName, "working_hours_begins", "")
+Local $sMailWorkingHoursEnds = IniRead($iniFileSettins, $sMailSectionName, "working_hours_ends", "")
+Local $sMailRegistryAddress = IniRead($iniFileSettins, $sMailSectionName, "registry", "")
 
-Local $sPrinterName = IniRead($iniFile, "printer", "name", "")
+Local $sPrinterName = IniRead($iniFileSettins, "printer", "name", "")
 
 Local $dX = @DesktopWidth
 Local $dY = @DesktopHeight
 If $bDebug Then
-	$dX = 800;1280
-	$dY = 600;1024
+	$dX = 1024
+	$dY = 768
 EndIf
 
 Local $numButSize = Round($dY / 10)
@@ -170,7 +186,7 @@ Local $fontSize = Round($numButSize / 3)
 
 Local $timeLabel = ""
 Local $enteredCode = ""
-If $bDebug Then $enteredCode = ""
+If $bDebug Then $enteredCode = "9601811873"
 
 Local $pressedButtonTimeCounter = 0
 Local $previousButtonPressedID[] = [0, 0]
@@ -418,23 +434,33 @@ Func FormCheckEnteredNumber($guiToDelete, $code)
 		$sReplacementText = $textPhoneNumber
 	ElseIf $res = -1 Then
 		$enumMember = $enServiceUnavailable
-	ElseIf IsArray($res) And UBound($res, $UBOUND_ROWS) = 1 And $res[0][4] Then
-		ToLog("first visit")
-		$enumMember = $enFirstTime
-	ElseIf IsArray($res) And UBound($res, $UBOUND_ROWS) = 1 And $res[0][5] Then
-		ToLog("card blocked")
+	ElseIf IsArray($res) And UBound($res, $UBOUND_ROWS) > 4 Then
 		$enumMember = $enNeedToGoToRegistry
-	ElseIf IsArray($res) And UBound($res, $UBOUND_ROWS) > 1 Then
-		If UBound($res, $UBOUND_ROWS) > 4 Then _
-			$enumMember = $enNeedToGoToRegistry
+	EndIf
 
-		$bMultiplePatients = True
+	If IsArray($res) And $enumMember = -1 Then
+		For $i = 0 To UBound($res, $UBOUND_ROWS) - 1
+			If $res[$i][4] Then
+				ToLog("first visit")
+				$enumMember = $enFirstTime
+				ExitLoop
+			EndIf
+
+			If $res[$i][5] Then
+				ToLog("card blocked")
+				$enumMember = $enNeedToGoToRegistry
+				ExitLoop
+			EndIf
+		Next
 	EndIf
 
 	If $enumMember > -1 Then
 		FormShowMessage($guiToDelete, $enumMember, $sReplacementText)
 		Return
 	EndIf
+
+	If UBound($res, $UBOUND_ROWS) > 1 Then _
+		$bMultiplePatients = True
 
 	Local $fioForm = GUICreate("FIO", $dX, $dY, 0, 0, $WS_POPUP, $bDebug ? -1 : $WS_EX_TOPMOST)
 
@@ -445,7 +471,7 @@ Func FormCheckEnteredNumber($guiToDelete, $code)
 		GUICtrlSetColor(-1, $colorAlternateText)
 
 	Local $bt_not = CreateButton($bMultiplePatients ? "Закрыть" : "Неверно", 0 + $distBt, $aNextButtonPosition[1], $aNextButtonPosition[2], _
-			$aNextButtonPosition[3])
+		$aNextButtonPosition[3])
 
 	Local $aNameButtons[4][4]
 	; $aNameButtons[0][0] - button id
@@ -597,19 +623,27 @@ Func FormShowAppointments($guiToDelete, $patientID, $name, $surname)
 
 	If $showAppointmentsForm Then
 		$destForm = GUICreate("FormShowAppointments", $dX, $dY, 0, 0, $WS_POPUP, $bDebug ? -1 : $WS_EX_TOPMOST)
-		CreateStandardDesign($destForm, StringReplace($textTitleAppointments, "*", $fullName), False)
+		CreateStandardDesign($destForm, StringReplace($textTitleAppointments, "*", $fullName), False, False)
 
 
-		$bt_close = CreateButton("Закрыть", _
-				0 + $distBt, _
+;~ 		$bt_close = CreateButton("Закрыть", _
+;~ 				0 + $distBt, _
+;~ 				$aNextButtonPosition[1], _
+;~ 				$aNextButtonPosition[2], _
+;~ 				$aNextButtonPosition[3])
+
+;~ 		$bt_print = CreateButton("Распечатать", _
+;~ 				$dX - $distBt - $aNextButtonPosition[2], _
+;~ 				$aNextButtonPosition[1], _
+;~ 				$aNextButtonPosition[2], _
+;~ 				$aNextButtonPosition[3], _
+;~ 				$colorOkButton, _
+;~ 				$colorAlternateText)
+
+		$bt_print = CreateButton("Отметиться и распечатать", _
+				$dX / 2 - $aNextButtonPosition[2], _
 				$aNextButtonPosition[1], _
-				$aNextButtonPosition[2], _
-				$aNextButtonPosition[3])
-
-		$bt_print = CreateButton("Распечатать", _
-				$dX - $distBt - $aNextButtonPosition[2], _
-				$aNextButtonPosition[1], _
-				$aNextButtonPosition[2], _
+				$aNextButtonPosition[2] * 2, _
 				$aNextButtonPosition[3], _
 				$colorOkButton, _
 				$colorAlternateText)
@@ -961,7 +995,9 @@ Func CreateStandardDesign($gui, $titleText, $isError, $trademark = False)
 	Local $headerBackgroundColor = $titleColor
 
 	If $titleText = $sTitleWelcome Then
-		If (@MDAY > 24 And @MON = 12) Or (@MDAY < 10 And @MON = 1) Then
+		ConsoleWrite("$titleText = $sTitleWelcome" & @CRLF)
+		ConsoleWrite("@MDAY: " & @MDAY & " @MON: " & @MON & @CRLF)
+		If (@MDAY >= 9 And @MON = 12) Or (@MDAY < 10 And @MON = 1) Then
 			$sTrademarkFileName = "PicChristmasTree.jpg"
 			$trademarkWidth = Round($dX * 0.133)
 			$trademarkHeight = Round($trademarkHeight * 1.26)
@@ -971,6 +1007,12 @@ Func CreateStandardDesign($gui, $titleText, $isError, $trademark = False)
 			Local $iHeaderWidth = $dX
 			Local $iHeaderHeight = Round($iHeaderWidth * 0.137)
 			GUICtrlCreatePic($sResourcesDirectory & $sHeaderFileName, 0, 0, $iHeaderWidth, $iHeaderHeight)
+		Else
+			Local $sInfo = "Разработка приложения:" & @CRLF & 'ООО "Клиника ЛМС"' & @CRLF & "dev@bzklinika.ru"
+			Local $hLabel = CreateLabel($sInfo, 12, $dY - 90, 210, 90, "0xc9c9c9", $colorMainBackground, $gui, $fontSize * 0.5)
+			GUICtrlSetStyle($hLabel, $SS_LEFT)
+			Local $position = ControlGetPos($gui, "", $hLabel);
+			GUICtrlSetPos($hLabel, 10, $dY - $position[3] - 10)
 		EndIf
 	EndIf
 
@@ -1463,7 +1505,7 @@ EndFunc   ;==>GetAppointmentsForCurrentTime
 
 
 Func GetTextFromIni($sectionName, $sql = False)
-	Local $array = IniReadSection($iniFile, $sectionName)
+	Local $array = IniReadSection($iniFileSettins, $sectionName)
 	Local $tmp = ""
 	Local $arrayRows = UBound($array, $UBOUND_ROWS) - 1
 
@@ -1665,6 +1707,70 @@ Func PrintAppontments($array, $name, $surname)
 		_Excel_RangeWrite($oBook, $worksheet, _StringRepeat("=", 24), "A" & $currentRow)
 		If @error Then ExcelWriteErrorToLog(@error)
 	EndIf
+
+
+
+;--------------------------------
+;~ 	advertisement part
+;--------------------------------
+
+	Local $sAdvertisementText = ""
+
+	If UBound($aAdvertisement, $UBOUND_ROWS) > 0 Then
+		Local $sToday = @YEAR & "/" & @MON & "/" & @MDAY
+		ConsoleWrite("$sToday: " & $sToday & @CRLF)
+		For $i = 0 To UBound($aAdvertisement, $UBOUND_ROWS) - 1
+			ConsoleWrite("$aAdvertisement[$i][0]: " & $aAdvertisement[$i][0] & @CRLF)
+			ConsoleWrite("$aAdvertisement[$i][1]: " & $aAdvertisement[$i][1] & @CRLF)
+			Local $nDaysToBegin = _DateDiff("D", $sToday, $aAdvertisement[$i][0])
+			Local $nDaysToEnd = _DateDiff("D", $sToday, $aAdvertisement[$i][1])
+			ConsoleWrite("$nDaysToBegin: " & $nDaysToBegin & @CRLF)
+			ConsoleWrite("$nDaysToEnd: " & $nDaysToEnd & @CRLF)
+
+			If $nDaysToBegin <= 0 And $nDaysToEnd >= 0 Then
+				ConsoleWrite("inside if ===" & @CRLF)
+				$sAdvertisementText = $aAdvertisement[$i][2]
+				Local $nCountPrints = IniRead($iniFileAdvertisement, $aAdvertisement[$i][3], "countPrints", 0)
+				IniWrite($iniFileAdvertisement, $aAdvertisement[$i][3], "countPrints", $nCountPrints + 1)
+			EndIf
+		Next
+	EndIf
+
+	If $sAdvertisementText Then
+		$currentRow += 1
+		_Excel_RangeCopyPaste($oBook.ActiveSheet, _
+				$oBook.ActiveSheet.Range("A" & $startRow), _
+				$oBook.ActiveSheet.Range("A" & $currentRow))
+		If @error Then ExcelCopyPasteErrorToLog(@error)
+
+		_Excel_RangeWrite($oBook, $worksheet, _StringRepeat("=", 24), "A" & $currentRow)
+		If @error Then ExcelWriteErrorToLog(@error)
+
+		$currentRow += 1
+		_Excel_RangeCopyPaste($oBook.ActiveSheet, _
+				$oBook.ActiveSheet.Range("A" & $startRow), _
+				$oBook.ActiveSheet.Range("A" & $currentRow))
+		If @error Then ExcelCopyPasteErrorToLog(@error)
+
+		_Excel_RangeWrite($oBook, $worksheet, $sAdvertisementText, "A" & $currentRow)
+		If @error Then ExcelWriteErrorToLog(@error)
+		$oBook.ActiveSheet.Range("A" & $currentRow).Interior.ColorIndex = 35
+
+		$currentRow += 1
+		_Excel_RangeCopyPaste($oBook.ActiveSheet, _
+				$oBook.ActiveSheet.Range("A" & $startRow), _
+				$oBook.ActiveSheet.Range("A" & $currentRow))
+		If @error Then ExcelCopyPasteErrorToLog(@error)
+
+		_Excel_RangeWrite($oBook, $worksheet, _StringRepeat("=", 24), "A" & $currentRow)
+		If @error Then ExcelWriteErrorToLog(@error)
+	EndIf
+
+
+
+
+
+
 
 	_Excel_Print($oExcel, $oBook)
 	If @error Then
